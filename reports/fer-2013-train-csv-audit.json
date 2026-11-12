@@ -1,0 +1,66 @@
+{
+  "dataset": "fer-2013-from-train-csv",
+  "splits": {
+    "train": {
+      "total_images": 19204,
+      "class_counts": {
+        "angry": 2683,
+        "disgust": 265,
+        "fear": 2719,
+        "happy": 4959,
+        "neutral": 3407,
+        "sad": 3302,
+        "surprise": 1869
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 19204
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 0
+    },
+    "validation": {
+      "total_images": 4115,
+      "class_counts": {
+        "angry": 575,
+        "disgust": 57,
+        "fear": 583,
+        "happy": 1063,
+        "neutral": 730,
+        "sad": 707,
+        "surprise": 400
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 4115
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 0
+    },
+    "test": {
+      "total_images": 4115,
+      "class_counts": {
+        "angry": 575,
+        "disgust": 57,
+        "fear": 583,
+        "happy": 1063,
+        "neutral": 730,
+        "sad": 707,
+        "surprise": 400
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 4115
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 0
+    }
+  },
+  "duplicate_content_groups": 0,
+  "cross_split_duplicate_groups": 0,
+  "conflicting_label_groups": 0,
+  "warnings": []
+}
