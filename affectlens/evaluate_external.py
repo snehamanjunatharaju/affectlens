@@ -168,7 +168,7 @@ def main():
             "labels": list(LABELS),
             "training_labels": "FER+ validation labels for calibration only",
             "temperature": temperature,
-            "calibration_count": int(len(expected)),
+            "calibration_count": len(expected),
             "calibration_nll": nll(temperature),
             "calibration_coverage": float((calibrated[np.arange(len(expected)), expected] >= 1.0 - nonconformity[rank]).mean()),
             "calibration_mean_set_size": float((calibrated >= 1.0 - nonconformity[rank]).sum(axis=1).mean()),

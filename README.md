@@ -4,7 +4,7 @@
 
 ## Demo
 
-Run the local demo at <http://127.0.0.1:8000>, or visit the hosted demo on Render (link will be added after deployment).
+Source: [github.com/snehamanjunatharaju/affectlens](https://github.com/snehamanjunatharaju/affectlens). Run the local demo at <http://127.0.0.1:8000>; a hosted Render link will be added after deployment.
 
 ## Demo GIF
 
