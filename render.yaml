@@ -3,6 +3,7 @@ services:
     name: affectlens
     runtime: docker
     plan: free
+    autoDeployTrigger: commit
     healthCheckPath: /api/health
     envVars:
       - key: PORT
