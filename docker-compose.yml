@@ -5,7 +5,8 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       SAVE_IMAGES: "false"
-      AFFECTLENS_MODEL_PATH: /models/fer-ferplus.onnx
+      PORT: "8000"
+      AFFECTLENS_MODEL_PATH: /models/affectnet-enet-b2-7.onnx
     volumes:
       - ./artifacts:/models:ro
     read_only: true

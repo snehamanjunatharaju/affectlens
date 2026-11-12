@@ -3,6 +3,11 @@
 __pycache__
 *.py[cod]
 artifacts
+!artifacts/
+artifacts/*
+!artifacts/affectnet-enet-b2-7.onnx
+!artifacts/affectnet-enet-b2-7.preprocess.json
+!artifacts/affectnet-enet-b2-7.uncertainty.json
 data
 reports
 docs/failures

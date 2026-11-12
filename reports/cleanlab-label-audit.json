@@ -1,0 +1,17 @@
+{
+  "samples": 23112,
+  "folds": 5,
+  "flagged_count": 9643,
+  "flagged_fraction": 0.41722914503288333,
+  "feature_model": "OpenCV HOG + class-balanced logistic regression",
+  "probability_method": "Stratified out-of-fold predict_proba; no image is predicted by a model fit on its fold.",
+  "oof_accuracy": 0.4800103842159917,
+  "oof_macro_f1": 0.37584968412135866,
+  "limitations": [
+    "Flags are review candidates, not ground-truth corrections.",
+    "The audit covers only FER+ train and validation images and uses the majority class as a discrete target.",
+    "HOG/logistic probabilities provide a lightweight independent quality signal, not the final AffectLens classifier.",
+    "FER+ annotator disagreement is expected and may cause apparent label issues without a true labeling error."
+  ],
+  "csv": "data/flagged_labels.csv"
+}

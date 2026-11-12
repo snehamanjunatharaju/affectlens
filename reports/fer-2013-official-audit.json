@@ -1,0 +1,54 @@
+{
+  "dataset": "fer-2013",
+  "splits": {
+    "train": {
+      "total_images": 24410,
+      "class_counts": {
+        "angry": 3995,
+        "disgust": 436,
+        "fear": 4097,
+        "happy": 7215,
+        "neutral": 4965,
+        "sad": 3702,
+        "surprise": 0
+      },
+      "missing_classes": [
+        "surprise"
+      ],
+      "corrupt_images": 1,
+      "dimensions": {
+        "48x48": 24409
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 591
+    },
+    "test": {
+      "total_images": 7178,
+      "class_counts": {
+        "angry": 958,
+        "disgust": 111,
+        "fear": 1024,
+        "happy": 1774,
+        "neutral": 1233,
+        "sad": 1247,
+        "surprise": 831
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 7178
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 81
+    }
+  },
+  "duplicate_content_groups": 919,
+  "cross_split_duplicate_groups": 314,
+  "conflicting_label_groups": 40,
+  "warnings": [
+    "train is missing classes: surprise",
+    "train contains 1 unreadable image(s)",
+    "Exact duplicate image content occurs across dataset splits; investigate split leakage",
+    "Some exact duplicate images have conflicting labels; investigate annotation quality"
+  ]
+}

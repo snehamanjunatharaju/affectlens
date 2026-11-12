@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: affectlens
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: AFFECTLENS_MODEL_PATH
+        value: /models/affectnet-enet-b2-7.onnx
+      - key: SAVE_IMAGES
+        value: "false"

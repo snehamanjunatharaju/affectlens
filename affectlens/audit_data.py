@@ -1,9 +1,9 @@
 """Audit a FER-style image folder without exporting or storing image contents."""
 
 import argparse
-from collections import Counter, defaultdict
 import hashlib
 import json
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import cv2

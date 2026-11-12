@@ -24,10 +24,10 @@ let liveTimer;
 let requestInFlight = false;
 let modelReady = false;
 let cameraRequestId = 0;
-let liveProbabilityWindows = new Map();
 let selectedVideoFile;
 let selectedVideoUrl;
-const LIVE_WINDOW_SIZE = 7;
+let liveFaceTracks = { tracks: new Map(), nextId: 1 };
+let liveProbabilityHistories = new Map();
 let faceLandmarkerPromise;
 let serviceLabel = 'CHECKING SERVICE';
 let facePipelineLabel = 'LOADING MEDIAPIPE';
@@ -73,7 +73,7 @@ loadFaceLandmarker().then(landmarker => {
 fetch('/api/health').then(response => response.json()).then(data => {
   modelReady = data.model_loaded;
   serviceLabel = modelReady
-    ? (data.uncertainty_mode === 'split_conformal' ? 'CONFORMAL' : 'SCORE THRESHOLD')
+    ? (data.fusion_loaded ? 'MESH FUSION · CONFORMAL' : data.uncertainty_mode === 'split_conformal' ? 'CONFORMAL' : 'SCORE THRESHOLD')
     : 'MODEL NOT CONFIGURED';
   renderServiceStatus();
   liveButton.disabled = !modelReady || !cameraStream;
@@ -108,19 +108,19 @@ function setSource(source) {
     previewImage.hidden = !selectedFile;
     placeholder.hidden = Boolean(selectedFile);
     placeholderText.textContent = 'Choose a face image to preview';
-    sourceNote.textContent = 'JPEG, PNG or WebP · max 8 MB · image is not saved';
+    sourceNote.textContent = 'JPEG, PNG or WebP · max 8 MB · sent to server for analysis · not saved by the app';
   } else if (cameraMode) {
     stopCamera();
     placeholder.hidden = Boolean(cameraStream);
     placeholderText.textContent = 'Click “Start camera” to enable your camera';
     previewVideo.hidden = !cameraStream;
-    sourceNote.textContent = 'Camera starts on request · MediaPipe runs locally · no audio or recording';
+    sourceNote.textContent = 'Camera starts on request · face detection runs in browser · crops sent to server · no audio or recording';
   } else {
     stopCamera();
     placeholder.hidden = Boolean(selectedVideoFile);
     placeholderText.textContent = 'Choose a short video to preview';
     videoFilePreview.hidden = !selectedVideoFile;
-    sourceNote.textContent = 'MP4 or WebM · up to 30 seconds · frames processed locally · no audio';
+    sourceNote.textContent = 'MP4 or WebM · up to 30 seconds · only sampled face crops sent to server · no audio';
   }
 }
 
@@ -144,8 +144,8 @@ analyzeButton.addEventListener('click', async () => {
     await previewImage.decode();
     const prepared = await prepareFaceInputs(previewImage, selectedFile);
     sourceNote.textContent = prepared[0].faceCrop
-      ? `MediaPipe aligned ${prepared.length} face(s) locally · crops go to the local API · not saved`
-      : 'MediaPipe found no face; trying the local OpenCV fallback · image is not saved';
+      ? `MediaPipe aligned ${prepared.length} face(s) in browser · crops sent to server · not saved by app`
+      : 'MediaPipe found no face; sending image to server-side face detector · not saved by app';
     const predictions = await Promise.all(prepared.map(requestAnalysis));
     if (predictions.length > 1) showMultiplePredictions(predictions);
     else showPrediction(predictions[0]);
@@ -229,9 +229,10 @@ async function startCamera() {
 
 function startLiveAnalysis() {
   if (!cameraStream || !modelReady || liveTimer) return;
-  liveProbabilityWindows = new Map();
+  liveFaceTracks = { tracks: new Map(), nextId: 1 };
+  liveProbabilityHistories = new Map();
   liveButton.textContent = 'Pause live analysis';
-  sourceNote.textContent = 'MediaPipe tracks up to three faces locally · face crops sent every 700 ms · no video is recorded';
+  sourceNote.textContent = 'Faces are matched by mesh position between frames · crops sent to server every 700 ms · no video is recorded';
   captureFrame();
   liveTimer = window.setInterval(captureFrame, 700);
 }
@@ -239,7 +240,8 @@ function startLiveAnalysis() {
 function stopLiveAnalysis() {
   if (liveTimer) window.clearInterval(liveTimer);
   liveTimer = undefined;
-  liveProbabilityWindows = new Map();
+  liveFaceTracks = { tracks: new Map(), nextId: 1 };
+  liveProbabilityHistories = new Map();
   liveButton.textContent = 'Start live analysis ↗';
   liveButton.disabled = !cameraStream || !modelReady;
   if (cameraStream) sourceNote.textContent = 'Camera preview is local · live analysis paused';
@@ -272,9 +274,12 @@ async function captureFrame() {
   try {
     const frame = await canvasToBlob(canvas, 'image/jpeg', 0.88);
     const prepared = await prepareFaceInputs(canvas, frame);
-    const predictions = await Promise.all(prepared.map(requestAnalysis));
+    const rawPredictions = await Promise.all(prepared.map(async input => ({
+      ...await requestAnalysis(input), faceCenter: input.faceCenter,
+    })));
+    const predictions = assignFaceTracks(rawPredictions, liveFaceTracks, performance.now(), 3000);
     if (predictions.length > 1) showMultiplePredictions(predictions, { live: true });
-    else showPrediction(predictions[0], { live: true, faceIndex: 0 });
+    else showPrediction(predictions[0], { live: true, faceIndex: predictions[0].trackId ?? 0 });
   } catch (error) {
     showError(error.message);
     if (/No model configured/i.test(error.message)) stopLiveAnalysis();
@@ -285,7 +290,7 @@ async function captureFrame() {
 
 async function prepareFaceInputs(source, fallbackBlob) {
   const landmarker = await loadFaceLandmarker();
-  if (!landmarker) return [{ blob: fallbackBlob, faceCrop: false }];
+  if (!landmarker) return [{ blob: fallbackBlob, faceCrop: false, faceCenter: { x: 0.5, y: 0.5 } }];
   let detections;
   let blendshapes = [];
   try {
@@ -297,14 +302,48 @@ async function prepareFaceInputs(source, fallbackBlob) {
     facePipelineLabel = 'OPENCV FALLBACK';
     faceLandmarkerPromise = Promise.resolve(null);
     renderServiceStatus();
-    return [{ blob: fallbackBlob, faceCrop: false }];
+    return [{ blob: fallbackBlob, faceCrop: false, faceCenter: { x: 0.5, y: 0.5 } }];
   }
-  if (detections.length === 0) return [{ blob: fallbackBlob, faceCrop: false, landmarkCues: [] }];
+  if (detections.length === 0) return [{ blob: fallbackBlob, faceCrop: false, landmarkCues: [], faceCenter: { x: 0.5, y: 0.5 } }];
   return Promise.all(detections.slice(0, 3).map(async (landmarks, index) => ({
     blob: await alignFaceCrop(source, landmarks),
     faceCrop: true,
+    faceCenter: landmarkCenter(landmarks),
     landmarkCues: (blendshapes[index]?.categories || []).map(({ categoryName, score }) => ({ categoryName, score })),
   })));
+}
+
+function landmarkCenter(landmarks) {
+  const xs = landmarks.map(point => point.x);
+  const ys = landmarks.map(point => point.y);
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+}
+
+function assignFaceTracks(predictions, state, timestamp, maxAge = Infinity) {
+  for (const [id, track] of state.tracks) {
+    if (timestamp - track.lastSeen > maxAge) state.tracks.delete(id);
+  }
+  const available = new Set(state.tracks.keys());
+  return predictions.map(prediction => {
+    if (!prediction.faceCenter || !Object.keys(prediction.probabilities || {}).length) return prediction;
+    let nearestId;
+    let nearestDistance = 0.18;
+    for (const id of available) {
+      const center = state.tracks.get(id).center;
+      const distance = Math.hypot(prediction.faceCenter.x - center.x, prediction.faceCenter.y - center.y);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestId = id;
+      }
+    }
+    const id = nearestId ?? state.nextId++;
+    available.delete(id);
+    state.tracks.set(id, { center: prediction.faceCenter, lastSeen: timestamp });
+    return { ...prediction, trackId: id };
+  });
 }
 
 function alignFaceCrop(source, landmarks) {
@@ -349,6 +388,11 @@ function canvasToBlob(source, type, quality) {
 async function requestAnalysis({ blob, faceCrop, landmarkCues = [] }) {
   const headers = { 'Content-Type': blob.type || 'image/jpeg' };
   if (faceCrop) headers['X-AffectLens-Face-Crop'] = 'mediapipe-landmarks';
+  if (landmarkCues.length) {
+    headers['X-AffectLens-Blendshapes'] = JSON.stringify(Object.fromEntries(
+      landmarkCues.map(({ categoryName, score }) => [categoryName, score]),
+    ));
+  }
   const response = await fetch('/api/analyze', { method: 'POST', headers, body: blob });
   const data = await response.json();
   if (!response.ok) throw new Error(data.detail || 'Analysis failed');
@@ -361,7 +405,7 @@ function showPrediction(data, options = {}) {
 
 function showMultiplePredictions(predictions, { live = false } = {}) {
   result.innerHTML = predictions.map((data, index) =>
-    `<section class="face-result"><h3>Face ${index + 1}</h3>${predictionMarkup(data, { live, faceIndex: index })}</section>`
+    `<section class="face-result"><h3>${data.trackId ? `Track ${data.trackId}` : `Face ${index + 1}`}</h3>${predictionMarkup(data, { live, faceIndex: data.trackId ?? index })}</section>`
   ).join('');
 }
 
@@ -387,12 +431,14 @@ async function analyzeVideoTimeline() {
       canvas.getContext('2d', { alpha: false }).drawImage(video, 0, 0, canvas.width, canvas.height);
       const frameBlob = await canvasToBlob(canvas, 'image/jpeg', 0.86);
       const inputs = await prepareFaceInputs(canvas, frameBlob);
-      const predictions = await Promise.all(inputs.map(requestAnalysis));
+      const predictions = await Promise.all(inputs.map(async input => ({
+        ...await requestAnalysis(input), faceCenter: input.faceCenter,
+      })));
       frames.push({ time, predictions });
-      sourceNote.textContent = `Processed frame ${index + 1} of ${frameCount} locally · no audio analyzed`;
+      sourceNote.textContent = `Processed frame ${index + 1} of ${frameCount} in browser · no audio analyzed`;
     }
     showVideoTimeline(frames);
-    sourceNote.textContent = `Analyzed ${frames.length} sampled frames · only detected face crops went to the local API · video is not saved`;
+    sourceNote.textContent = `Analyzed ${frames.length} sampled frames · detected face crops sent to server · video is not uploaded or saved by the app`;
   } catch (error) {
     showError(error.message);
   } finally {
@@ -428,21 +474,30 @@ function seekVideo(video, time) {
 }
 
 function showVideoTimeline(frames) {
-  const faceCount = Math.max(1, ...frames.map(frame => frame.predictions.length));
-  result.innerHTML = Array.from({ length: faceCount }, (_, faceIndex) => {
+  const tracker = { tracks: new Map(), nextId: 1 };
+  frames.forEach(frame => {
+    frame.predictions = assignFaceTracks(frame.predictions, tracker, frame.time * 1000, 6000);
+  });
+  const trackIds = [...new Set(frames.flatMap(frame => frame.predictions.map(prediction => prediction.trackId).filter(Boolean)))];
+  if (!trackIds.length) {
+    result.innerHTML = '<p class="abstain">No face with usable scores was found in the sampled frames.</p>';
+    return;
+  }
+  result.innerHTML = trackIds.map(trackId => {
     const points = frames.map(frame => {
-      const prediction = frame.predictions[faceIndex];
+      const prediction = frame.predictions.find(item => item.trackId === trackId);
       const scores = prediction?.probabilities || {};
       const [label, score] = Object.entries(scores).sort((a, b) => b[1] - a[1])[0] || ['no face', 0];
       const height = Math.max(3, score * 100);
-      return `<div class="timeline-point${prediction?.abstained ? ' abstained' : ''}" style="height:${height}%" title="${frame.time.toFixed(1)}s · ${escapeHtml(label)} · ${(score * 100).toFixed(1)}%"><span>${frame.time.toFixed(0)}s</span></div>`;
+      const status = !prediction ? 'no face detected' : prediction.abstained ? 'uncertain; no single label' : `selected ${label}`;
+      return `<div class="timeline-point${prediction?.abstained ? ' abstained' : ''}" style="height:${height}%" title="${frame.time.toFixed(1)}s · ${escapeHtml(status)} · leading score ${(score * 100).toFixed(1)}%"><span>${frame.time.toFixed(0)}s</span></div>`;
     }).join('');
-    const guesses = frames.map(frame => {
-      const scores = frame.predictions[faceIndex]?.probabilities || {};
-      return Object.entries(scores).sort((a, b) => b[1] - a[1])[0]?.[0];
-    }).filter(Boolean);
-    const summary = guesses.length ? `Best guesses in detector order: ${guesses.map(escapeHtml).join(' → ')}.` : 'No face was detected in the sampled frames.';
-    return `<section class="face-result"><h3>Face ${faceIndex + 1} · sampled frames</h3><div class="timeline-chart">${points}</div><p class="timeline-summary">${summary} Gray bars mean the model abstained. Detector order can change between frames.</p></section>`;
+    const sampled = frames.map(frame => frame.predictions.find(item => item.trackId === trackId)).filter(Boolean);
+    const uncertain = sampled.filter(prediction => prediction.abstained).length;
+    const summary = sampled.length
+      ? `${uncertain} of ${sampled.length} sampled frames were uncertain and had no single selected label.`
+      : 'No face was detected in the sampled frames.';
+    return `<section class="face-result"><h3>Approximate track ${trackId} · sampled frames</h3><div class="timeline-chart">${points}</div><p class="timeline-summary">${summary} Gray bars indicate abstention. Tracks are matched by face position and may split or switch when people cross or move quickly; they are not identity recognition.</p></section>`;
   }).join('');
 }
 
@@ -450,7 +505,6 @@ function predictionMarkup(data, { live = false, faceIndex = 0 } = {}) {
   const currentScores = data.probabilities || {};
   const labels = Object.keys(currentScores);
   if (!labels.length) {
-    liveProbabilityWindows.delete(faceIndex);
     const message = data.reason === 'no_face'
       ? 'No face detected. Center one face in the frame and try again.'
       : data.reason === 'multiple_faces'
@@ -459,34 +513,44 @@ function predictionMarkup(data, { live = false, faceIndex = 0 } = {}) {
     return `<p class="abstain">${message}</p>`;
   }
 
-  let scores = currentScores;
-  if (live) {
-    const window = [...(liveProbabilityWindows.get(faceIndex) || []), currentScores].slice(-LIVE_WINDOW_SIZE);
-    liveProbabilityWindows.set(faceIndex, window);
-    scores = Object.fromEntries(labels.map(label => [
-      label,
-      window.reduce((sum, frame) => sum + (frame[label] || 0), 0) / window.length,
-    ]));
-  }
+  const scores = currentScores;
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   const [bestLabel, bestScore] = ranked[0];
+  let liveTrend = '';
+  if (live) {
+    const history = [...(liveProbabilityHistories.get(faceIndex) || []), currentScores].slice(-5);
+    liveProbabilityHistories.set(faceIndex, history);
+    if (history.length >= 3) {
+      const meanScores = Object.fromEntries(labels.map(label => [
+        label,
+        history.reduce((sum, frame) => sum + (frame[label] || 0), 0) / history.length,
+      ]));
+      const [trendLabel] = Object.entries(meanScores).sort((a, b) => b[1] - a[1])[0];
+      liveTrend = `<p class="microcopy">Recent frame trend: ${escapeHtml(trendLabel)} · ${history.length} frames · smoothing is descriptive and does not change this frame’s calibrated result.</p>`;
+    }
+  }
   const rows = ranked.map(([label, score]) =>
     `<div class="score"><span>${escapeHtml(label)}</span><div class="track"><div class="fill" style="width:${Math.round(score * 100)}%"></div></div><span>${(score * 100).toFixed(1)}%</span></div>`
   ).join('');
   const uncertainty = data.abstained
-    ? `<p class="abstain">Low certainty: the model cannot narrow this frame to one class.</p>`
+    ? `<p class="abstain">Uncertain: no single label selected for this frame. The leading score is ${escapeHtml(bestLabel)}, but it is not a reliable classification.</p>`
     : '<p class="microcopy">The model selected one class; this is still a guess, not a guarantee.</p>';
   const choices = data.prediction_set?.length
     ? `<details class="candidate-list"><summary>Conformal candidates for this frame (${data.prediction_set.length})</summary><p>${data.prediction_set.map(escapeHtml).join(', ')}</p></details>`
     : '';
   const cues = (data.landmarkCues || []).filter(item => item.score >= 0.1).sort((a, b) => b.score - a.score).slice(0, 5);
   const landmarkPanel = cues.length
-    ? `<details class="candidate-list"><summary>MediaPipe shape cues · separate geometric signal</summary><p>${cues.map(item => `${escapeHtml(item.categoryName)} ${(item.score * 100).toFixed(0)}%`).join(' · ')}</p><p class="microcopy">Blendshape coefficients are not emotion labels and are not combined with the classifier score.</p></details>`
+    ? `<details class="candidate-list"><summary>MediaPipe blendshape features</summary><p>${cues.map(item => `${escapeHtml(item.categoryName)} ${(item.score * 100).toFixed(0)}%`).join(' · ')}</p><p class="microcopy">${data.fusion_applied ? 'These movement features were combined with image scores by the calibrated fusion model.' : 'These movement coefficients were not used in the class score because the fusion model was unavailable.'} They are not emotion labels by themselves.</p></details>`
+    : '';
+  const disagreement = data.modality_disagreement
+    ? `<p class="abstain">Image and mesh fusion disagree: the image-only model favored ${escapeHtml(data.base_label || 'another class')}. This frame is marked uncertain.</p>`
     : '';
   const rolling = live
-    ? `<p class="microcopy">Rolling average of ${(liveProbabilityWindows.get(faceIndex) || []).length} recent frames. Temperature scaling can fail under shift.</p>`
+    ? '<p class="microcopy">Scores are for this frame only; live predictions can vary between frames. Temperature scaling can fail under shift.</p>'
     : '<p class="microcopy">Temperature-calibrated score on the training distribution; it is not a measure of inner feelings.</p>';
-  return `<div class="prediction-title"><strong>Best guess: ${escapeHtml(bestLabel)}</strong><span class="confidence">CALIBRATED SCORE ${(bestScore * 100).toFixed(1)}%</span></div>${uncertainty}${choices}${landmarkPanel}${rolling}${rows}`;
+  const heading = data.abstained ? `Leading class (uncertain): ${bestLabel}` : `Selected class: ${bestLabel}`;
+  const scoreLabel = data.abstained ? 'LEADING SCORE' : 'CALIBRATED SCORE';
+  return `<div class="prediction-title"><strong>${escapeHtml(heading)}</strong><span class="confidence">${scoreLabel} ${(bestScore * 100).toFixed(1)}%</span></div>${uncertainty}${disagreement}${choices}${landmarkPanel}${rolling}${liveTrend}${rows}`;
 }
 
 function showError(message) {

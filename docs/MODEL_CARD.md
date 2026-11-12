@@ -2,17 +2,17 @@
 
 ## Model
 
-- Active model: CompactFER trained on FER+ ten-rater soft labels, exported to ONNX.
-- Input: one aligned, grayscale 48×48 face crop.
+- Active model: EmotiEffNet-B2, VGGFace2-pretrained and fine-tuned on AffectNet, distributed under Apache-2.0.
+- Input: one browser-aligned 260×260 BGR face crop with ImageNet mean/std normalization.
 - Output: seven temperature-scaled scores plus a split-conformal candidate set.
-- Training: FER-2013 training images annotated by FER+ raters; exact duplicate pixels are deduplicated and split by image content.
-- Weights and data are local artifacts and are not included in this repository.
+- Calibration: temperature and conformal threshold fitted on FER+ validation data; these are not guaranteed to transfer outside this benchmark distribution.
+- The model weights are a local artifact and are not included in this repository. SHA-256: `7863032d8c0c0bc259aa0dd7b8ebf6b607af454e7a0ea82be2b37767914ecd0f`.
 
 ## Evaluation
 
-On the FER+ derived internal holdout, accuracy was 44.14%, macro-F1 36.51%, ECE 0.034, and 90.73% conformal coverage. On the supplied FER-2013 PublicTest split (3,589 images), accuracy was 39.54%, macro-F1 34.93%, ECE 0.038, and coverage was 83.17% at a nominal 90% target. Mean conformal set size was 4.20 of seven labels. See [the full report](../reports/model-comparison.json) and [controlled shift results](../reports/ferplus-publictest-robustness.json).
+On FER+ validation (4,078 images), accuracy was 62.82% and macro-F1 52.14%. On the untouched FER+ test split (4,078 images), accuracy was 63.76% and macro-F1 54.05%. The exact same aligned crops scored 36.98% / 31.83% with the previous CompactFER model. Validation-fitted conformal coverage was 90.04% on validation and 90.49% on test; test mean set size was 2.16, singleton coverage 25.63%, and singleton accuracy 89.19%. These are single-split results and do not establish real-world coverage. See the [validation report](../reports/affectnet-external-validation.json), [same-crop test comparison](../reports/affectnet-external-test.json), and [older CompactFER reports](../reports/model-comparison.json).
 
-These are single-split estimates. FER-2013 has small grayscale crops, class imbalance, label disagreement, no reliable identity IDs, and no demographic fields. Cross-dataset performance and subgroup fairness have not been evaluated.
+These are single-split estimates. This evaluates transfer from the AffectNet-trained model to FER+ crops; it is not an in-domain AffectNet test. FER-2013 has small grayscale crops, class imbalance, label disagreement, no reliable identity IDs, and no demographic fields. Broader real-world performance and subgroup fairness have not been evaluated.
 
 ## Intended use
 
@@ -26,8 +26,8 @@ Do not use for hiring, education, health care, policing, access control, identit
 
 - Low-resolution inputs discard detail; camera crops differ from benchmark crops.
 - Scores and conformal coverage can degrade under lighting, pose, occlusion, camera, demographic, and dataset shifts.
-- Even on the PublicTest split, nominal 90% conformal coverage measured 83.17%; the advertised target is not met there.
-- A mean candidate set of 4.20 classes means the model usually abstains. The UI also shows the highest-scoring class as a best guess, not as a certainty.
+- Test-set conformal coverage has not been reported; validation calibration coverage is not a test guarantee.
+- The mean validation candidate set size was 2.15 classes. The UI abstains when its conformal set is not a singleton and may show a best-scoring class separately.
 - Demographic performance gaps are unknown because the supplied training data lacks appropriate metadata.
 
 ## Privacy

@@ -1,9 +1,9 @@
 """Train a compact FER baseline, report held-out metrics, and export ONNX."""
 
 import argparse
-from collections import defaultdict
 import hashlib
 import json
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -281,7 +281,7 @@ def main():
     class_mass = np.stack([train_aug.samples[i][2] for i in fit_indices]).sum(axis=0)
     weights = class_mass.sum() / (len(LABELS) * np.maximum(class_mass, 1))
     criterion = nn.CrossEntropyLoss(weight=torch.tensor(weights, dtype=torch.float32, device=device))
-    optimizer = torch.optim.AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=1e-3 if rgb else 1e-3, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=1e-3, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     best_f1, best_state, stale = -1.0, None, 0
 
@@ -312,7 +312,6 @@ def main():
     calibration_metrics = metrics(model, calibration_loader, device)
     calibration_y = np.asarray(calibration_metrics.pop("expected"))
     calibration_probs = calibration_metrics.pop("probabilities")
-    calibration_logits = None
     calibration_temperature = 1.0
     # Temperature scaling is fit only on the held-out calibration partition.
     if len(calibration_y):
@@ -339,7 +338,7 @@ def main():
         "alpha": alpha,
         "score": "1 - probability assigned to the true class",
         "quantile": conformal_quantile,
-        "sample_count": int(len(calibration_y)),
+        "sample_count": len(calibration_y),
         "singleton_coverage": float(calibration_singleton.mean()),
         "singleton_accuracy": float((calibration_sets.argmax(axis=1)[calibration_singleton] == calibration_y[calibration_singleton]).mean()) if calibration_singleton.any() else None,
         "mean_set_size": float(calibration_sets.sum(axis=1).mean()),

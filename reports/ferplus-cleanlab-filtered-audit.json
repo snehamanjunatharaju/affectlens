@@ -1,0 +1,66 @@
+{
+  "dataset": "fer-2013-ferplus-cleaned",
+  "splits": {
+    "train": {
+      "total_images": 17127,
+      "class_counts": {
+        "angry": 1578,
+        "disgust": 59,
+        "fear": 347,
+        "happy": 4795,
+        "neutral": 6427,
+        "sad": 2134,
+        "surprise": 1787
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 17127
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 0
+    },
+    "validation": {
+      "total_images": 3674,
+      "class_counts": {
+        "angry": 340,
+        "disgust": 7,
+        "fear": 81,
+        "happy": 1038,
+        "neutral": 1372,
+        "sad": 451,
+        "surprise": 385
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 3674
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 0
+    },
+    "test": {
+      "total_images": 4078,
+      "class_counts": {
+        "angry": 394,
+        "disgust": 33,
+        "fear": 113,
+        "happy": 1119,
+        "neutral": 1477,
+        "sad": 504,
+        "surprise": 438
+      },
+      "missing_classes": [],
+      "corrupt_images": 0,
+      "dimensions": {
+        "48x48": 4078
+      },
+      "unrecognized_class_folders": [],
+      "duplicate_content_groups": 0
+    }
+  },
+  "duplicate_content_groups": 0,
+  "cross_split_duplicate_groups": 0,
+  "conflicting_label_groups": 0,
+  "warnings": []
+}

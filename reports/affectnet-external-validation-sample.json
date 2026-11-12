@@ -1,0 +1,140 @@
+{
+  "model": "artifacts/affectnet-enet-b2-7.onnx",
+  "split": "validation",
+  "sample_count": 633,
+  "mesh_aligned_fraction": 0.8672985781990521,
+  "accuracy": 0.636650868878357,
+  "macro_f1": 0.6224135828070706,
+  "classes": {
+    "angry": {
+      "precision": 0.56,
+      "recall": 0.7,
+      "f1-score": 0.6222222222222222,
+      "support": 100.0
+    },
+    "disgust": {
+      "precision": 0.4523809523809524,
+      "recall": 0.5757575757575758,
+      "f1-score": 0.5066666666666667,
+      "support": 33.0
+    },
+    "fear": {
+      "precision": 0.5174418604651163,
+      "recall": 0.89,
+      "f1-score": 0.6544117647058824,
+      "support": 100.0
+    },
+    "happy": {
+      "precision": 0.9404761904761905,
+      "recall": 0.79,
+      "f1-score": 0.8586956521739131,
+      "support": 100.0
+    },
+    "neutral": {
+      "precision": 0.6268656716417911,
+      "recall": 0.42,
+      "f1-score": 0.5029940119760479,
+      "support": 100.0
+    },
+    "sad": {
+      "precision": 0.7205882352941176,
+      "recall": 0.49,
+      "f1-score": 0.5833333333333334,
+      "support": 100.0
+    },
+    "surprise": {
+      "precision": 0.7333333333333333,
+      "recall": 0.55,
+      "f1-score": 0.6285714285714286,
+      "support": 100.0
+    },
+    "accuracy": 0.636650868878357,
+    "macro avg": {
+      "precision": 0.6501551776559288,
+      "recall": 0.6308225108225108,
+      "f1-score": 0.6224135828070706,
+      "support": 633.0
+    },
+    "weighted avg": {
+      "precision": 0.6710886264607051,
+      "recall": 0.636650868878357,
+      "f1-score": 0.6346648361742223,
+      "support": 633.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      70,
+      11,
+      15,
+      1,
+      2,
+      1,
+      0
+    ],
+    [
+      9,
+      19,
+      3,
+      1,
+      1,
+      0,
+      0
+    ],
+    [
+      1,
+      1,
+      89,
+      0,
+      1,
+      1,
+      7
+    ],
+    [
+      1,
+      2,
+      3,
+      79,
+      9,
+      0,
+      6
+    ],
+    [
+      29,
+      1,
+      4,
+      1,
+      42,
+      17,
+      6
+    ],
+    [
+      11,
+      8,
+      18,
+      2,
+      11,
+      49,
+      1
+    ],
+    [
+      4,
+      0,
+      40,
+      0,
+      1,
+      0,
+      55
+    ]
+  ],
+  "label_order": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "preprocessing": "MediaPipe eye-aligned crop where detected; otherwise original image. BGR, 260x260, ImageNet mean/std per EmotiEffNet B2 reference implementation."
+}

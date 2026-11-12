@@ -4,5 +4,11 @@ __pycache__/
 *.egg-info/
 .history-memo/
 artifacts/
-data/
+!artifacts/
+artifacts/*
+!artifacts/affectnet-enet-b2-7.onnx
+!artifacts/affectnet-enet-b2-7.preprocess.json
+!artifacts/affectnet-enet-b2-7.uncertainty.json
+data/*
+!data/flagged_labels.csv
 .DS_Store

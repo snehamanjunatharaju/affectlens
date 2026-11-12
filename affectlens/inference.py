@@ -39,6 +39,9 @@ class Prediction:
     abstained: bool
     reason: str | None = None
     prediction_set: tuple[str, ...] = ()
+    base_label: str | None = None
+    modality_disagreement: bool = False
+    fusion_applied: bool = False
 
 
 class ExpressionModel:
@@ -65,7 +68,10 @@ class ExpressionModel:
         self.input_size = 48
         self.mean = [0.5]
         self.std = [0.5]
+        self.color_order = "rgb"
         self.temperature = 1.0
+        self.fusion_session = None
+        self.fusion_metadata = None
         if model_path:
             if not model_path.is_file():
                 raise RuntimeError(f"Model file does not exist: {model_path}")
@@ -88,8 +94,11 @@ class ExpressionModel:
                 self.input_size = int(preprocess.get("size", self.input_size))
                 self.mean = preprocess.get("mean", self.mean)
                 self.std = preprocess.get("std", self.std)
+                self.color_order = preprocess.get("color_order", "rgb")
                 if len(self.mean) != self.input_channels or len(self.std) != self.input_channels or any(float(value) <= 0 for value in self.std):
                     raise RuntimeError(f"Invalid preprocessing parameters in {sidecar}")
+                if self.color_order not in {"rgb", "bgr"}:
+                    raise RuntimeError(f"Invalid color_order in {sidecar}")
             sidecar = model_path.with_suffix(".uncertainty.json")
             if sidecar.is_file():
                 import json
@@ -104,18 +113,41 @@ class ExpressionModel:
                 self.temperature = float(calibration.get("temperature", 1.0))
                 if not 0.05 <= self.temperature <= 20.0:
                     raise RuntimeError(f"Invalid temperature in {sidecar}")
+            fusion_model = model_path.with_suffix(".fusion.onnx")
+            fusion_sidecar = model_path.with_suffix(".fusion.json")
+            if fusion_model.is_file() != fusion_sidecar.is_file():
+                raise RuntimeError("Fusion model and metadata sidecar must both be present")
+            if fusion_model.is_file():
+                import json
+
+                self.fusion_metadata = json.loads(fusion_sidecar.read_text())
+                if self.fusion_metadata.get("labels") != list(LABELS):
+                    raise RuntimeError(f"Fusion label order does not match {fusion_sidecar}")
+                names = self.fusion_metadata.get("blendshape_names")
+                means = self.fusion_metadata.get("feature_mean")
+                stds = self.fusion_metadata.get("feature_std")
+                if not isinstance(names, list) or len(names) != 52 or len(set(names)) != 52:
+                    raise RuntimeError(f"Invalid blendshape names in {fusion_sidecar}")
+                if not isinstance(means, list) or not isinstance(stds, list) or len(means) != 52 or len(stds) != 52 or any(float(value) <= 0 for value in stds):
+                    raise RuntimeError(f"Invalid blendshape normalization in {fusion_sidecar}")
+                temperature = float(self.fusion_metadata.get("temperature", 1.0))
+                quantile = float(self.fusion_metadata.get("quantile", -1.0))
+                if not 0.05 <= temperature <= 20.0 or not 0 <= quantile <= 1:
+                    raise RuntimeError(f"Invalid fusion calibration in {fusion_sidecar}")
+                self.fusion_session = ort.InferenceSession(str(fusion_model), providers=["CPUExecutionProvider"])
 
     @property
     def ready(self) -> bool:
         return self.session is not None
 
-    def predict(self, raw: bytes, *, face_crop: bool = False) -> Prediction:
+    def predict(self, raw: bytes, *, face_crop: bool = False, blendshapes: dict[str, float] | None = None) -> Prediction:
         if self.session is None:
             raise InferenceUnavailable("No model configured. Set AFFECTLENS_MODEL_PATH to a FER-compatible ONNX model.")
         image = decode_upload(raw)
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         if face_crop:
             crop = gray
+            color_crop = image
         else:
             faces = self._detect_faces(gray)
             if len(faces) == 0:
@@ -124,6 +156,7 @@ class ExpressionModel:
                 return Prediction(None, 0.0, {}, True, "multiple_faces")
             x, y, width, height = map(int, faces[0])
             crop = gray[y : y + height, x : x + width]
+            color_crop = image[y : y + height, x : x + width]
         input_meta = self.session.get_inputs()[0]
         shape = input_meta.shape
         channels_first = self.input_layout == "nchw"
@@ -131,13 +164,16 @@ class ExpressionModel:
         height_axis, width_axis = (2, 3) if channels_first else (1, 2)
         if len(shape) == 4 and isinstance(shape[height_axis], int) and isinstance(shape[width_axis], int):
             height_in, width_in = shape[height_axis], shape[width_axis]
-        crop = cv2.resize(crop, (width_in, height_in)).astype(np.float32) / 255.0
-        if channels_first:
-            tensor = crop[None, None, :, :]
-        else:
-            tensor = crop[None, :, :, None]
         if self.input_channels == 3:
-            tensor = np.repeat(tensor, 3, axis=1 if channels_first else -1)
+            color_crop = cv2.cvtColor(color_crop, cv2.COLOR_RGB2BGR) if self.color_order == "bgr" else color_crop
+            resized = cv2.resize(color_crop, (width_in, height_in)).astype(np.float32) / 255.0
+            if channels_first:
+                tensor = resized.transpose(2, 0, 1)[None, :, :, :]
+            else:
+                tensor = resized[None, :, :, :]
+        else:
+            resized = cv2.resize(crop, (width_in, height_in)).astype(np.float32) / 255.0
+            tensor = resized[None, None, :, :] if channels_first else resized[None, :, :, None]
         mean = np.asarray(self.mean, dtype=np.float32).reshape((1, self.input_channels, 1, 1) if channels_first else (1, 1, 1, self.input_channels))
         std = np.asarray(self.std, dtype=np.float32).reshape((1, self.input_channels, 1, 1) if channels_first else (1, 1, 1, self.input_channels))
         tensor = (tensor - mean) / std
@@ -151,16 +187,44 @@ class ExpressionModel:
             shifted = logits / self.temperature - (logits / self.temperature).max()
             exp = np.exp(shifted)
             probabilities = exp / exp.sum()
+        base_best = int(probabilities.argmax())
+        fusion_applied = False
+        quantile = self.conformal_quantile
+        if self.fusion_session is not None and blendshapes is not None:
+            names = self.fusion_metadata["blendshape_names"]
+            if all(name in blendshapes for name in names):
+                raw_features = np.asarray([blendshapes[name] for name in names], dtype=np.float32)
+                means = np.asarray(self.fusion_metadata["feature_mean"], dtype=np.float32)
+                stds = np.asarray(self.fusion_metadata["feature_std"], dtype=np.float32)
+                feature_vector = np.concatenate([((raw_features - means) / stds), np.ones(1, dtype=np.float32)])[None, :]
+                fusion_inputs = self.fusion_session.get_inputs()
+                fusion_logits = np.asarray(self.fusion_session.run(None, {
+                    fusion_inputs[0].name: probabilities.astype(np.float32)[None, :],
+                    fusion_inputs[1].name: feature_vector,
+                })[0]).reshape(-1)
+                if fusion_logits.size != len(LABELS) or not np.isfinite(fusion_logits).all():
+                    raise InferenceUnavailable("Fusion model output must contain seven finite class scores.")
+                probabilities = np.exp(fusion_logits / float(self.fusion_metadata["temperature"]) - np.max(fusion_logits / float(self.fusion_metadata["temperature"])))
+                probabilities /= probabilities.sum()
+                fusion_applied = True
+                quantile = float(self.fusion_metadata["quantile"])
         best = int(probabilities.argmax())
         confidence = float(probabilities[best])
-        if self.conformal_quantile is not None:
-            selected = tuple(LABELS[i] for i, score in enumerate(probabilities) if 1.0 - score <= self.conformal_quantile)
+        if quantile is not None:
+            selected = tuple(LABELS[i] for i, score in enumerate(probabilities) if 1.0 - score <= quantile)
+            disagreement = fusion_applied and best != base_best
+            if disagreement and LABELS[base_best] not in selected:
+                selected = (*selected, LABELS[base_best])
             abstained = len(selected) != 1
-            reason = "empty_prediction_set" if not selected else "ambiguous_prediction_set" if len(selected) > 1 else None
+            reason = "modality_disagreement" if disagreement else "empty_prediction_set" if not selected else "ambiguous_prediction_set" if len(selected) > 1 else None
         else:
             abstained = confidence < self.threshold
             selected = () if abstained else (LABELS[best],)
-            reason = "low_confidence" if abstained else None
+            disagreement = fusion_applied and best != base_best
+            reason = "modality_disagreement" if disagreement else "low_confidence" if abstained else None
+            if disagreement:
+                abstained = True
+                selected = tuple(dict.fromkeys((*selected, LABELS[base_best])))
         return Prediction(
             None if abstained else LABELS[best],
             confidence,
@@ -168,6 +232,9 @@ class ExpressionModel:
             abstained,
             reason,
             selected,
+            LABELS[base_best] if fusion_applied else None,
+            disagreement,
+            fusion_applied,
         )
 
     def _detect_faces(self, gray: np.ndarray) -> np.ndarray:

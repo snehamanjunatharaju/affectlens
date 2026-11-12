@@ -1,0 +1,149 @@
+{
+  "model": "artifacts/affectnet-enet-b2-7.onnx",
+  "split": "validation",
+  "sample_count": 4078,
+  "mesh_aligned_fraction": 0.8935752820009809,
+  "accuracy": 0.6282491417361452,
+  "macro_f1": 0.5214056563642415,
+  "classes": {
+    "angry": {
+      "precision": 0.4222560975609756,
+      "recall": 0.7030456852791879,
+      "f1-score": 0.5276190476190477,
+      "support": 394.0
+    },
+    "disgust": {
+      "precision": 0.125,
+      "recall": 0.5757575757575758,
+      "f1-score": 0.20540540540540542,
+      "support": 33.0
+    },
+    "fear": {
+      "precision": 0.1884328358208955,
+      "recall": 0.8938053097345132,
+      "f1-score": 0.31124807395993837,
+      "support": 113.0
+    },
+    "happy": {
+      "precision": 0.9579918032786885,
+      "recall": 0.8355674709562109,
+      "f1-score": 0.8926014319809069,
+      "support": 1119.0
+    },
+    "neutral": {
+      "precision": 0.8800489596083231,
+      "recall": 0.4867975626269465,
+      "f1-score": 0.6268526591107236,
+      "support": 1477.0
+    },
+    "sad": {
+      "precision": 0.5285171102661597,
+      "recall": 0.5515873015873016,
+      "f1-score": 0.5398058252427185,
+      "support": 504.0
+    },
+    "surprise": {
+      "precision": 0.5614457831325301,
+      "recall": 0.5319634703196348,
+      "f1-score": 0.5463071512309496,
+      "support": 438.0
+    },
+    "accuracy": 0.6282491417361452,
+    "macro avg": {
+      "precision": 0.5233846556667962,
+      "recall": 0.6540749108944816,
+      "f1-score": 0.5214056563642415,
+      "support": 4078.0
+    },
+    "weighted avg": {
+      "precision": 0.7542662654937038,
+      "recall": 0.6282491417361452,
+      "f1-score": 0.6586214721805826,
+      "support": 4078.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      277,
+      43,
+      55,
+      5,
+      6,
+      3,
+      5
+    ],
+    [
+      9,
+      19,
+      3,
+      1,
+      1,
+      0,
+      0
+    ],
+    [
+      1,
+      1,
+      101,
+      0,
+      1,
+      1,
+      8
+    ],
+    [
+      8,
+      15,
+      32,
+      935,
+      26,
+      11,
+      92
+    ],
+    [
+      297,
+      48,
+      78,
+      29,
+      719,
+      233,
+      73
+    ],
+    [
+      54,
+      26,
+      76,
+      6,
+      60,
+      278,
+      4
+    ],
+    [
+      10,
+      0,
+      191,
+      0,
+      4,
+      0,
+      233
+    ]
+  ],
+  "label_order": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "preprocessing": "MediaPipe eye-aligned crop where detected; otherwise original image. BGR, 260x260, ImageNet mean/std per EmotiEffNet B2 reference implementation.",
+  "calibrated_uncertainty": {
+    "temperature": 1.2923790594979319,
+    "conformal_quantile": 0.8922345032147199,
+    "ece": 0.03711128583437101,
+    "coverage": 0.9004413928396273,
+    "mean_set_size": 2.151790093182933,
+    "singleton_coverage": 0.2680235409514468,
+    "singleton_accuracy": 0.8966148215919487
+  }
+}

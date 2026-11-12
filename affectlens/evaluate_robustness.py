@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
 from .evaluate import expected_calibration_error
 from .inference import ExpressionModel
 from .labels import ALIASES, IMAGE_EXTENSIONS, LABELS
@@ -65,7 +66,7 @@ def summarize(labels: np.ndarray, probabilities: np.ndarray, quantile: float) ->
     singleton = sizes == 1
     ece, reliability = expected_calibration_error(labels, probabilities)
     return {
-        "samples": int(len(labels)),
+        "samples": len(labels),
         "accuracy": float(np.mean(predictions == labels)),
         "macro_f1": float(np.mean(f1s)),
         "ece": ece,

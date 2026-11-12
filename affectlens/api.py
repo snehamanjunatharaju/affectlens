@@ -22,6 +22,7 @@ class HealthResponse(BaseModel):
     status: Literal["ready", "needs_model"]
     model_loaded: bool
     uncertainty_mode: Literal["unavailable", "split_conformal", "score_threshold"]
+    fusion_loaded: bool
 
 
 class AnalysisResponse(BaseModel):
@@ -31,6 +32,9 @@ class AnalysisResponse(BaseModel):
     abstained: bool
     reason: str | None = None
     prediction_set: list[str]
+    base_label: str | None = None
+    modality_disagreement: bool = False
+    fusion_applied: bool = False
     uncertainty_mode: Literal["split_conformal", "score_threshold"]
     disclaimer: str
     retention: str
@@ -89,6 +93,7 @@ def health(request: Request):
         "status": "ready" if model.ready else "needs_model",
         "model_loaded": model.ready,
         "uncertainty_mode": uncertainty_mode,
+        "fusion_loaded": model.fusion_session is not None,
     }
 
 
@@ -112,13 +117,26 @@ async def analyze(request: Request):
     if not allowed:
         raise HTTPException(status_code=429, detail="Too many analysis requests; try again shortly.", headers={"Retry-After": str(retry_after)})
     face_crop = request.headers.get("x-affectlens-face-crop") == "mediapipe-landmarks"
+    blendshape_header = request.headers.get("x-affectlens-blendshapes")
+    blendshapes = None
+    if blendshape_header:
+        try:
+            parsed = json.loads(blendshape_header)
+            if not isinstance(parsed, dict) or len(parsed) > 64 or any(
+                not isinstance(name, str) or not isinstance(value, (int, float)) or not 0 <= value <= 1
+                for name, value in parsed.items()
+            ):
+                raise ValueError("invalid blendshape values")
+            blendshapes = parsed
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Blendshape input must be a JSON object with scores from 0 to 1.") from exc
     payload = bytearray()
     async for chunk in request.stream():
         payload.extend(chunk)
         if len(payload) > settings.max_upload_bytes:
             raise HTTPException(status_code=413, detail="Image exceeds the configured upload limit.")
     try:
-        prediction = request.app.state.model.predict(bytes(payload), face_crop=face_crop)
+        prediction = request.app.state.model.predict(bytes(payload), face_crop=face_crop, blendshapes=blendshapes)
     except InferenceUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except InvalidImage as exc:
@@ -131,6 +149,9 @@ async def analyze(request: Request):
         "abstained": prediction.abstained,
         "reason": prediction.reason,
         "prediction_set": prediction.prediction_set,
+        "base_label": prediction.base_label,
+        "modality_disagreement": prediction.modality_disagreement,
+        "fusion_applied": prediction.fusion_applied,
         "uncertainty_mode": "split_conformal" if request.app.state.model.conformal_quantile is not None else "score_threshold",
         "disclaimer": "A visible expression is not proof of a person's inner emotional state.",
         "retention": "Image processed in memory and not saved by this service.",

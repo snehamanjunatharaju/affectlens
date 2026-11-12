@@ -1,0 +1,21 @@
+{
+  "method": "split_conformal_classification",
+  "alpha": 0.1,
+  "quantile": 0.8922345032147199,
+  "labels": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "training_labels": "FER+ validation labels for calibration only",
+  "temperature": 1.2923790594979319,
+  "calibration_count": 4078,
+  "calibration_nll": 0.9409234664755455,
+  "calibration_coverage": 0.9004413928396273,
+  "calibration_mean_set_size": 2.151790093182933,
+  "note": "Calibration fitted on FER+ validation with browser-aligned preprocessing; coverage does not transfer automatically to other domains."
+}
