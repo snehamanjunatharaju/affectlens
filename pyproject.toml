@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 train = ["torch>=2.6,<3", "torchvision>=0.21,<1", "scikit-learn>=1.5,<2", "onnx>=1.16,<2", "onnxscript>=0.2,<1", "matplotlib>=3.8,<4"]
 fusion = ["mediapipe>=0.10.35,<0.11", "torch>=2.6,<3", "scikit-learn>=1.5,<2", "onnx>=1.16,<2", "onnxscript>=0.2,<1"]
-dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9,<1"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9,<1", "scikit-learn>=1.5,<2"]
 quality = ["cleanlab>=2.9,<3", "scikit-learn>=1.5,<2"]
 
 [tool.setuptools.packages.find]
