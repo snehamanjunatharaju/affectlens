@@ -50,6 +50,8 @@ def health(request: Request):
 @app.post("/api/analyze")
 async def analyze(request: Request):
     settings = request.app.state.settings
+    if settings.save_images:
+        raise HTTPException(status_code=503, detail="Image persistence is disabled by this build.")
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=415, detail="Use a JPEG, PNG, or WebP image.")

@@ -1,9 +1,12 @@
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 import cv2
 import numpy as np
 import onnxruntime as ort
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from .labels import LABELS
 
 
@@ -13,6 +16,19 @@ class InferenceUnavailable(RuntimeError):
 
 class InvalidImage(ValueError):
     pass
+
+
+def decode_upload(raw: bytes) -> np.ndarray:
+    """Decode orientation-corrected RGB pixels while discarding all source metadata."""
+    try:
+        with Image.open(BytesIO(raw)) as upload:
+            if upload.width * upload.height > 40_000_000:
+                raise InvalidImage("Image dimensions exceed the configured pixel limit.")
+            return np.asarray(ImageOps.exif_transpose(upload).convert("RGB"))
+    except InvalidImage:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise InvalidImage("Upload must be a supported image file.") from exc
 
 
 @dataclass(frozen=True)
@@ -96,10 +112,8 @@ class ExpressionModel:
     def predict(self, raw: bytes, *, face_crop: bool = False) -> Prediction:
         if self.session is None:
             raise InferenceUnavailable("No model configured. Set AFFECTLENS_MODEL_PATH to a FER-compatible ONNX model.")
-        image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
-        if image is None:
-            raise InvalidImage("Upload must be a supported image file.")
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        image = decode_upload(raw)
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         if face_crop:
             crop = gray
         else:

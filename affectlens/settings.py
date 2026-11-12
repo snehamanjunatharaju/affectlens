@@ -1,5 +1,5 @@
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -9,6 +9,7 @@ class Settings:
     face_cascade_path: Path | None
     confidence_threshold: float
     max_upload_bytes: int
+    save_images: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -16,6 +17,9 @@ class Settings:
         cascade = os.getenv("AFFECTLENS_FACE_CASCADE")
         threshold = float(os.getenv("AFFECTLENS_CONFIDENCE_THRESHOLD", "0.55"))
         max_upload_bytes = int(os.getenv("AFFECTLENS_MAX_UPLOAD_BYTES", str(8 * 1024 * 1024)))
+        save_images = os.getenv("SAVE_IMAGES", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        if save_images:
+            raise ValueError("SAVE_IMAGES=true is unsupported: uploaded images are never written to disk")
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("AFFECTLENS_CONFIDENCE_THRESHOLD must be between 0 and 1")
         if max_upload_bytes <= 0:
@@ -25,4 +29,5 @@ class Settings:
             face_cascade_path=Path(cascade) if cascade else None,
             confidence_threshold=threshold,
             max_upload_bytes=max_upload_bytes,
+            save_images=save_images,
         )

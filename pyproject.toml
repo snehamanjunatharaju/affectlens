@@ -14,10 +14,12 @@ dependencies = [
   "numpy>=1.26,<3",
   "opencv-python-headless>=4.10,<5",
   "onnxruntime>=1.19,<2",
+  "Pillow>=10,<13",
 ]
 
 [project.optional-dependencies]
 train = ["torch>=2.6,<3", "torchvision>=0.21,<1", "scikit-learn>=1.5,<2", "onnx>=1.16,<2", "onnxscript>=0.2,<1", "matplotlib>=3.8,<4"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9,<1"]
 
 [tool.setuptools.packages.find]
 where = ["."]

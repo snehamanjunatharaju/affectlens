@@ -168,6 +168,15 @@ Use a held-out test set that was not used for training, calibration, or model se
 
 This classifies patterns in a face image. Facial expression labels do not establish a person's internal emotional state, intent, personality, or wellbeing. AffectLens is for voluntary experimentation and model evaluation, not hiring, education, healthcare, policing, or other decisions about people. Camera access starts only after the user clicks **Start camera**; audio is disabled. MediaPipe detects and aligns each frame in the browser; individual face crops go to the local API. The app does not record video or store requests. Stop camera to end the browser camera stream.
 
+## Privacy and data handling
+
+- The default demo runs on `127.0.0.1`; uploaded pixels are decoded and processed in memory.
+- MediaPipe runs locally in the browser. When it finds a face, only the aligned crop is sent to this local API; otherwise the selected image is sent to the local OpenCV fallback.
+- The browser and API do not save images, camera frames, or request bodies, and do not send them to an external service. The API logs request status only.
+- `SAVE_IMAGES=false` is the default. Setting it to true makes startup fail closed; this build has no image-persistence path.
+- EXIF orientation is applied during decoding, and only the resulting pixel array is passed onward. EXIF metadata is discarded.
+- This privacy claim covers the code in this repository running locally. A reverse proxy, hosting platform, browser extension, or modified deployment may have different logging behavior.
+
 ## Structure
 
 ```text
