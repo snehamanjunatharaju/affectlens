@@ -1,15 +1,53 @@
+import json
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from . import __version__
 from .inference import ExpressionModel, InferenceUnavailable, InvalidImage
+from .monitoring import PredictionMonitor
+from .rate_limit import SlidingWindowLimiter
 from .settings import Settings
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ready", "needs_model"]
+    model_loaded: bool
+    uncertainty_mode: Literal["unavailable", "split_conformal", "score_threshold"]
+
+
+class AnalysisResponse(BaseModel):
+    label: str | None
+    confidence: float
+    probabilities: dict[str, float]
+    abstained: bool
+    reason: str | None = None
+    prediction_set: list[str]
+    uncertainty_mode: Literal["split_conformal", "score_threshold"]
+    disclaimer: str
+    retention: str
+    uncertainty_scope: str
+
+
+class MonitoringResponse(BaseModel):
+    total_count: int
+    recent_count: int
+    mean_latency_ms: float | None
+    p95_latency_ms: float | None
+    confidence_histogram: list[int]
+    predicted_class_distribution: dict[str, float]
+    prediction_drift_psi: float | None
+    drift_threshold: float | None = None
+    drift_alert: bool
+    note: str | None = None
 
 
 @asynccontextmanager
@@ -17,6 +55,13 @@ async def lifespan(app: FastAPI):
     settings = Settings.from_env()
     app.state.settings = settings
     app.state.model = ExpressionModel(settings.model_path, settings.confidence_threshold, settings.face_cascade_path)
+    app.state.rate_limiter = SlidingWindowLimiter(settings.rate_limit_per_minute)
+    baseline = {}
+    if settings.model_path:
+        baseline_path = settings.model_path.with_suffix(".monitoring.json")
+        if baseline_path.is_file():
+            baseline = json.loads(baseline_path.read_text()).get("predicted_class_distribution", {})
+    app.state.monitor = PredictionMonitor(baseline)
     yield
 
 
@@ -34,7 +79,7 @@ def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthResponse)
 def health(request: Request):
     model = request.app.state.model
     uncertainty_mode = "unavailable" if not model.ready else (
@@ -47,14 +92,25 @@ def health(request: Request):
     }
 
 
-@app.post("/api/analyze")
+@app.get("/api/metrics", response_model=MonitoringResponse)
+def metrics(request: Request):
+    """Return process-local aggregates; no image or per-request record is retained."""
+    return request.app.state.monitor.snapshot()
+
+
+@app.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze(request: Request):
+    started_at = time.perf_counter()
     settings = request.app.state.settings
     if settings.save_images:
         raise HTTPException(status_code=503, detail="Image persistence is disabled by this build.")
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=415, detail="Use a JPEG, PNG, or WebP image.")
+    client_key = request.client.host if request.client else "unknown"
+    allowed, retry_after = request.app.state.rate_limiter.check(client_key)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many analysis requests; try again shortly.", headers={"Retry-After": str(retry_after)})
     face_crop = request.headers.get("x-affectlens-face-crop") == "mediapipe-landmarks"
     payload = bytearray()
     async for chunk in request.stream():
@@ -67,6 +123,7 @@ async def analyze(request: Request):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except InvalidImage as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    request.app.state.monitor.record(prediction.probabilities, (time.perf_counter() - started_at) * 1000)
     return {
         "label": prediction.label,
         "confidence": prediction.confidence,

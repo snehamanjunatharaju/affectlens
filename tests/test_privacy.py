@@ -11,6 +11,8 @@ from PIL import Image
 
 from affectlens import api
 from affectlens.inference import Prediction, decode_upload
+from affectlens.monitoring import PredictionMonitor
+from affectlens.rate_limit import SlidingWindowLimiter
 from affectlens.settings import Settings
 
 
@@ -68,3 +70,21 @@ def test_save_images_must_remain_disabled(monkeypatch):
     monkeypatch.setenv("SAVE_IMAGES", "true")
     with pytest.raises(ValueError, match="never written to disk"):
         Settings.from_env()
+
+
+def test_rate_limiter_returns_retry_after():
+    limiter = SlidingWindowLimiter(limit=1, window_seconds=60)
+    assert limiter.check("127.0.0.1") == (True, 0)
+    allowed, retry_after = limiter.check("127.0.0.1")
+    assert not allowed
+    assert 1 <= retry_after <= 60
+
+
+def test_monitor_flags_distribution_shift_without_storing_images():
+    monitor = PredictionMonitor({"happy": 1.0})
+    for _ in range(50):
+        monitor.record({"sad": 0.8, "happy": 0.2}, 12.0)
+    snapshot = monitor.snapshot()
+    assert snapshot["recent_count"] == 50
+    assert snapshot["drift_alert"]
+    assert snapshot["mean_latency_ms"] == 12.0

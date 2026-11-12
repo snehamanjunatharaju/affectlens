@@ -51,6 +51,8 @@ def evaluate(model_path: Path, split: Path, filename_prefix: str | None = None):
     predicted = probabilities.argmax(axis=1)
     matrix = confusion_matrix(expected, predicted, labels=list(range(len(LABELS))))
     ece, reliability = expected_calibration_error(expected, probabilities)
+    prediction_distribution = {label: float(np.mean(predicted == index)) for index, label in enumerate(LABELS)}
+    confidence_bins = np.histogram(probabilities.max(axis=1), bins=np.linspace(0, 1, 11))[0].tolist()
     conformal = None
     if model.conformal_quantile is not None:
         covered = np.asarray([LABELS[label] in selected for label, selected in zip(expected, sets)])
@@ -63,7 +65,7 @@ def evaluate(model_path: Path, split: Path, filename_prefix: str | None = None):
     order = np.argsort(-probabilities.max(axis=1))
     risk_coverage = []
     for coverage in np.linspace(0.1, 1.0, 10):
-        count = max(1, int(round(len(order) * coverage)))
+        count = max(1, round(len(order) * coverage))
         selected = order[:count]
         risk_coverage.append({"coverage": float(count / len(order)), "risk": float((predicted[selected] != expected[selected]).mean())})
     return {
@@ -75,6 +77,8 @@ def evaluate(model_path: Path, split: Path, filename_prefix: str | None = None):
         "classes": classification_report(expected, predicted, labels=list(range(len(LABELS))), target_names=list(LABELS), output_dict=True, zero_division=0),
         "confusion_matrix": matrix.tolist(),
         "ece": ece,
+        "predicted_class_distribution": prediction_distribution,
+        "confidence_histogram": confidence_bins,
         "reliability_bins": reliability,
         "conformal": conformal,
         "risk_coverage": risk_coverage,
@@ -87,10 +91,19 @@ def main():
     parser.add_argument("--data", type=Path, required=True, help="Folder containing labeled class subfolders")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--filename-prefix", help="Optional prefix filter, e.g. PublicTest_ to avoid mixing public/private data")
+    parser.add_argument("--write-monitor-baseline", action="store_true", help="Write aggregate predicted-label counts beside the ONNX model")
     args = parser.parse_args()
     report = evaluate(args.model, args.data, args.filename_prefix)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2))
+    if args.write_monitor_baseline:
+        monitoring_path = args.model.with_suffix(".monitoring.json")
+        monitoring_path.write_text(json.dumps({
+            "source_split": str(args.data),
+            "filename_prefix": args.filename_prefix,
+            "sample_count": report["sample_count"],
+            "predicted_class_distribution": report["predicted_class_distribution"],
+        }, indent=2))
     print(json.dumps({key: report[key] for key in ("sample_count", "accuracy", "macro_f1", "ece", "conformal")}, indent=2))
 
 

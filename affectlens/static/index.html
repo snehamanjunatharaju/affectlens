@@ -18,18 +18,21 @@
     <section class="workspace">
       <article class="panel capture-panel">
         <div class="panel-heading"><div><span class="step">01</span><h2>Choose an input</h2></div><span class="badge">UPLOAD OR CAMERA</span></div>
-        <div class="source-tabs" role="tablist" aria-label="Image source">
+        <div class="source-tabs" role="tablist" aria-label="Analysis source">
           <button class="source-tab active" id="upload-tab" type="button" role="tab" aria-selected="true">Upload image</button>
           <button class="source-tab" id="camera-tab" type="button" role="tab" aria-selected="false">Live camera</button>
+          <button class="source-tab" id="video-tab" type="button" role="tab" aria-selected="false">Video timeline</button>
         </div>
         <div class="preview" id="preview">
           <div class="placeholder" id="placeholder"><span class="face-icon">◉</span><p id="placeholder-text">Choose a face image to preview</p></div>
           <img id="preview-image" alt="Selected image preview" hidden>
           <video id="camera-preview" autoplay playsinline muted aria-label="Local camera preview" hidden></video>
+          <video id="video-file-preview" controls muted aria-label="Selected video preview" hidden></video>
           <canvas id="capture-canvas" hidden></canvas>
         </div>
         <div class="controls" id="upload-controls"><label class="button secondary" for="file">Choose image</label><input id="file" type="file" accept="image/jpeg,image/png,image/webp"><button class="button primary" id="analyze" disabled>Analyze image <span>↗</span></button></div>
         <div class="controls camera-controls" id="camera-controls" hidden><button class="button secondary" id="start-camera" type="button">Start camera</button><button class="button primary" id="toggle-live" type="button" disabled>Start live analysis <span>↗</span></button><button class="button secondary" id="stop-camera" type="button" disabled>Stop camera</button></div>
+        <div class="controls" id="video-controls" hidden><label class="button secondary" for="video-file">Choose video</label><input id="video-file" type="file" accept="video/mp4,video/webm"><button class="button primary" id="analyze-video" type="button" disabled>Analyze timeline <span>↗</span></button></div>
         <p class="microcopy" id="source-note">JPEG, PNG or WebP · max 8 MB · image is not saved</p>
       </article>
       <article class="panel result-panel">
