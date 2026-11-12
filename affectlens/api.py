@@ -136,7 +136,10 @@ async def analyze(request: Request):
         if len(payload) > settings.max_upload_bytes:
             raise HTTPException(status_code=413, detail="Image exceeds the configured upload limit.")
     try:
-        prediction = request.app.state.model.predict(bytes(payload), face_crop=face_crop, blendshapes=blendshapes)
+        prediction_args = {"face_crop": face_crop}
+        if blendshapes is not None:
+            prediction_args["blendshapes"] = blendshapes
+        prediction = request.app.state.model.predict(bytes(payload), **prediction_args)
     except InferenceUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except InvalidImage as exc:
