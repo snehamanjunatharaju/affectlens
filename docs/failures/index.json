@@ -1,0 +1,152 @@
+[
+  {
+    "rank": 1,
+    "source_file": "PublicTest_5323878.jpg",
+    "true_label": "fear",
+    "predicted_label": "happy",
+    "confidence": 0.9143447875976562,
+    "face_image": "01-fear-as-happy-face.png",
+    "gradcam_image": "01-fear-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 2,
+    "source_file": "PublicTest_12326319.jpg",
+    "true_label": "angry",
+    "predicted_label": "happy",
+    "confidence": 0.9057734608650208,
+    "face_image": "02-angry-as-happy-face.png",
+    "gradcam_image": "02-angry-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 3,
+    "source_file": "PublicTest_13590004.jpg",
+    "true_label": "fear",
+    "predicted_label": "happy",
+    "confidence": 0.8840152621269226,
+    "face_image": "03-fear-as-happy-face.png",
+    "gradcam_image": "03-fear-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 4,
+    "source_file": "PublicTest_34419863.jpg",
+    "true_label": "surprise",
+    "predicted_label": "happy",
+    "confidence": 0.8830043077468872,
+    "face_image": "04-surprise-as-happy-face.png",
+    "gradcam_image": "04-surprise-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 5,
+    "source_file": "PublicTest_12751829.jpg",
+    "true_label": "angry",
+    "predicted_label": "happy",
+    "confidence": 0.8824741840362549,
+    "face_image": "05-angry-as-happy-face.png",
+    "gradcam_image": "05-angry-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 6,
+    "source_file": "PublicTest_65629669.jpg",
+    "true_label": "fear",
+    "predicted_label": "happy",
+    "confidence": 0.8761181831359863,
+    "face_image": "06-fear-as-happy-face.png",
+    "gradcam_image": "06-fear-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 7,
+    "source_file": "PublicTest_21789246.jpg",
+    "true_label": "fear",
+    "predicted_label": "happy",
+    "confidence": 0.8726790547370911,
+    "face_image": "07-fear-as-happy-face.png",
+    "gradcam_image": "07-fear-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 8,
+    "source_file": "PublicTest_23586952.jpg",
+    "true_label": "sad",
+    "predicted_label": "angry",
+    "confidence": 0.8648809194564819,
+    "face_image": "08-sad-as-angry-face.png",
+    "gradcam_image": "08-sad-as-angry-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 9,
+    "source_file": "PublicTest_85484322.jpg",
+    "true_label": "sad",
+    "predicted_label": "happy",
+    "confidence": 0.8648040294647217,
+    "face_image": "09-sad-as-happy-face.png",
+    "gradcam_image": "09-sad-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 10,
+    "source_file": "PublicTest_59870219.jpg",
+    "true_label": "fear",
+    "predicted_label": "happy",
+    "confidence": 0.8627737760543823,
+    "face_image": "10-fear-as-happy-face.png",
+    "gradcam_image": "10-fear-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 11,
+    "source_file": "PublicTest_41743385.jpg",
+    "true_label": "fear",
+    "predicted_label": "surprise",
+    "confidence": 0.8496628403663635,
+    "face_image": "11-fear-as-surprise-face.png",
+    "gradcam_image": "11-fear-as-surprise-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 12,
+    "source_file": "PublicTest_15595284.jpg",
+    "true_label": "disgust",
+    "predicted_label": "happy",
+    "confidence": 0.8312315344810486,
+    "face_image": "12-disgust-as-happy-face.png",
+    "gradcam_image": "12-disgust-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 13,
+    "source_file": "PublicTest_57583458.jpg",
+    "true_label": "disgust",
+    "predicted_label": "happy",
+    "confidence": 0.8217582702636719,
+    "face_image": "13-disgust-as-happy-face.png",
+    "gradcam_image": "13-disgust-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 14,
+    "source_file": "PublicTest_40599442.jpg",
+    "true_label": "sad",
+    "predicted_label": "happy",
+    "confidence": 0.8185730576515198,
+    "face_image": "14-sad-as-happy-face.png",
+    "gradcam_image": "14-sad-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  },
+  {
+    "rank": 15,
+    "source_file": "PublicTest_38753807.jpg",
+    "true_label": "fear",
+    "predicted_label": "happy",
+    "confidence": 0.8184611201286316,
+    "face_image": "15-fear-as-happy-face.png",
+    "gradcam_image": "15-fear-as-happy-gradcam.png",
+    "possible_factors": "Label disagreement, expression ambiguity, pose, lighting, or occlusion are hypotheses only; no individual cause was verified."
+  }
+]

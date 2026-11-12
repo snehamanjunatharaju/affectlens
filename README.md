@@ -26,16 +26,20 @@ flowchart LR
 
 ## Results
 
-All rows below use the same **4,078-image held-out FER+ split** and majority-vote class as the scoring target. The compact hard-label and soft-label runs use the full training split. EfficientNet-B0 is only a 1,000-image, four-epoch feasibility pilot; it is not a full-data comparison. Full per-class precision/recall/F1, confusion matrices, and risk-coverage data are in [`reports/model-comparison.json`](reports/model-comparison.json).
+The first two test columns use the same **4,078-image held-out split** from the FER training partition; the next columns report the separately supplied **3,589-image FER-2013 PublicTest split**. The compact hard-label and soft-label runs use the full training split. EfficientNet-B0 is only a 1,000-image, four-epoch feasibility pilot; it is not a full-data comparison. Full per-class precision/recall/F1, confusion matrices, reliability bins, and risk-coverage data are in [`reports/model-comparison.json`](reports/model-comparison.json).
 
-| Model | Test accuracy | Macro-F1 | ECE | Conformal coverage | Mean set size | Training note |
+| Model | Internal holdout acc / F1 | PublicTest acc / F1 | PublicTest ECE | PublicTest coverage | Mean set size | Training note |
 |---|---:|---:|---:|---:|---:|---|
-| Compact, hard labels, light augmentation | 35.85% | 30.97% | 0.026 | 89.70% | 4.44 / 7 | Reference run |
-| Compact, hard labels, no augmentation | 41.59% | 33.27% | 0.033 | 90.66% | 3.85 / 7 | Same split, seed, and epoch budget |
-| Compact, FER+ soft labels | **44.14%** | **36.51%** | 0.034 | 90.73% | 4.22 / 7 | Active checkpoint; 10-rater distributions |
-| ImageNet EfficientNet-B0 | 25.13% | 20.94% | **0.010** | 89.70% | 5.45 / 7 | 1,000 examples, four epochs, 48×48 pilot |
+| Compact, hard labels, light augmentation | 35.85% / 30.97% | 31.79% / 29.00% | 0.041 | 83.14% | 4.45 / 7 | Reference run |
+| Compact, hard labels, no augmentation | 41.59% / 33.27% | 34.86% / 30.33% | 0.060 | 81.89% | 3.88 / 7 | Same split, seed, and epoch budget |
+| Compact, FER+ soft labels | **44.14% / 36.51%** | **39.54% / 34.93%** | 0.038 | 83.17% | 4.20 / 7 | Active checkpoint; 10-rater distributions |
+| ImageNet EfficientNet-B0 | 25.13% / 20.94% | 25.94% / 23.13% | **0.012** | 88.55% | 5.44 / 7 | 1,000 examples, four epochs, 48×48 pilot |
 
-Temperature scaling is fit on a separate, stratified calibration partition; conformal quantiles are also fit there. The reported coverage is measured on the untouched test split. Shifted data do not inherit that coverage guarantee. The model usually cannot narrow its output to one class, so it displays a best guess while abstaining. This is an honest measure of current model weakness. In this run, removing augmentation improved the compact hard-label model; augmentation is not assumed to help without an ablation.
+Reliability plot: [`docs/reliability.png`](docs/reliability.png). Controlled corruption report and chart: [`reports/ferplus-publictest-robustness.json`](reports/ferplus-publictest-robustness.json) and [`docs/robustness.png`](docs/robustness.png). Error examples with Grad-CAM overlays: [`docs/FAILURE_ANALYSIS.md`](docs/FAILURE_ANALYSIS.md).
+
+Temperature scaling is fit on a separate, stratified calibration partition; conformal quantiles are also fit there. Although internal holdout coverage is close to the 90% target, PublicTest coverage is only 83.17% for the active model. The empirical miss shows that calibration does not transfer reliably even across this dataset’s split. The average set still has about four candidates, and the model usually abstains. In this run, removing augmentation improved the compact hard-label model; augmentation is not assumed to help without an ablation. FER-2013 PublicTest is an independent within-dataset evaluation, not a cross-dataset test.
+
+On synthetic PublicTest shifts, the biggest accuracy drops were eye-band occlusion (21.01%), 45° rotation (22.51%), dim lighting (23.07%), and added noise (24.71%), versus 39.54% clean. Occlusion and noise also raised ECE to 0.225 and 0.174, and conformal coverage fell to 71.05% and 70.10%. These are controlled image edits, not a substitute for collecting authorized real-world test data.
 
 ## Limitations
 
@@ -45,6 +49,9 @@ Temperature scaling is fit on a separate, stratified calibration partition; conf
 - Subgroup fairness analysis is **not run**: the available data has no suitable demographic annotations. Do not infer fairness from aggregate scores.
 - The EfficientNet-B0 result is a compute-limited pilot, not evidence that a pretrained backbone is worse when properly trained on a larger licensed dataset.
 - Expression classes describe visible patterns; they do not establish internal feelings, intent, personality, or wellbeing. This demo is unsuitable for decisions about people.
+- Cross-dataset evaluation using RAF-DB or AffectNet awaits dataset access; subgroup fairness analysis requires suitable consented demographic metadata.
+
+See the [model card](docs/MODEL_CARD.md) and [fairness status](docs/FAIRNESS.md) for intended use, risks, and the exact scope of the available data.
 
 AffectLens brings the FER-2013 seven-class task into one clean project, replacing machine-specific paths and training-on-import scripts with a reproducible trainer, a local API, and a browser interface. Its focus is **selective prediction**: a split-conformal calibration set can return a set of plausible classes or abstain when it cannot make a single-label prediction.
 
@@ -61,7 +68,7 @@ AffectLens brings the FER-2013 seven-class task into one clean project, replacin
 - Streaming upload size/type checks. The service does not spool uploads or write images to disk.
 - Local run by default; no account, external API, or cloud model is required.
 
-The active checkpoint `artifacts/fer-ferplus.onnx` was trained on the FER+ crowd-annotated labels aligned with the 28,709 FER training images. FER+ uses ten ratings per image and provides a distribution across labels, which this trainer learns with soft-label cross entropy. On a deduplicated, stratified held-out portion of these images, it scored 44.14% accuracy and 36.51% macro-F1 against the majority class. The older hard-label checkpoint scored 31.35% / 27.39% on a different split and target labels; these figures are **not a controlled head-to-head comparison**. Neither is an official Kaggle test score or real-world accuracy. FER+ relabels the same photos; it does not add new photos. See [FER+ provenance and method](https://github.com/microsoft/FERPlus) and the included `data/raw/FERPlus-LICENSE.md`.
+The active checkpoint `artifacts/fer-ferplus.onnx` was trained on the FER+ crowd-annotated labels aligned with the 28,709 FER training images. FER+ uses ten ratings per image and provides a distribution across labels, which this trainer learns with soft-label cross entropy. FER+ relabels the same photos; it does not add new photos. See [FER+ provenance and method](https://github.com/microsoft/FERPlus) and the included `data/raw/FERPlus-LICENSE.md`.
 
 ### Audit of the data currently in this workspace
 
@@ -89,13 +96,13 @@ Set `AFFECTLENS_MODEL_PATH` to a FER-compatible ONNX model. The expected input i
 
 `angry, disgust, fear, happy, neutral, sad, surprise`
 
-Softmax probabilities or raw logits are accepted. The face crop is resized to 48×48 unless the ONNX model declares fixed spatial dimensions. Models with an adjacent `.uncertainty.json` sidecar use conformal prediction sets; otherwise the service uses a `0.55` score cutoff, adjustable with `AFFECTLENS_CONFIDENCE_THRESHOLD`. The score cutoff is **not a calibrated probability guarantee**.
+Softmax probabilities or raw logits are accepted. Models with `.preprocess.json` metadata can specify one or three channels, size, and normalization; otherwise the service uses grayscale 48×48 input normalized to `[-1,1]`. Models with an adjacent `.uncertainty.json` sidecar use temperature scaling and conformal prediction sets; otherwise the service uses a `0.55` score cutoff, adjustable with `AFFECTLENS_CONFIDENCE_THRESHOLD`. A score is not a guarantee of correctness.
 
 ```bash
 AFFECTLENS_MODEL_PATH=/path/to/fer.onnx uvicorn affectlens.api:app --host 127.0.0.1 --port 8000
 ```
 
-The browser uses the locally bundled MediaPipe Tasks Vision JavaScript runtime and `face_landmarker.task` model to detect, align, and crop one face. OpenCV Haar cascades remain a fallback when the browser runtime cannot load. Optional settings: `AFFECTLENS_FACE_CASCADE` points to a custom fallback cascade; `AFFECTLENS_MAX_UPLOAD_BYTES` changes the default 8 MiB limit. Dataset files stay under `data/` and are excluded from Git. Model weights and evaluation reports are local artifacts under `artifacts/` and are excluded from Git.
+The browser uses the locally bundled MediaPipe Tasks Vision JavaScript runtime and `face_landmarker.task` model to detect, align, and crop a face. OpenCV Haar cascades remain a fallback when the browser runtime cannot load. Optional settings: `AFFECTLENS_FACE_CASCADE` points to a custom fallback cascade; `AFFECTLENS_MAX_UPLOAD_BYTES` changes the default 8 MiB limit. Dataset files stay under `data/` and are excluded from Git. Model weights stay under `artifacts/` and are excluded from Git.
 
 ## Train the baseline
 
@@ -107,9 +114,16 @@ python -m affectlens.train --data data/fer-2013 --output artifacts/fer.onnx --ep
 AFFECTLENS_MODEL_PATH="$PWD/artifacts/fer.onnx" uvicorn affectlens.api:app --host 127.0.0.1 --port 8000
 ```
 
+To fine-tune the ImageNet-pretrained EfficientNet-B0 pilot, use `--architecture efficientnet_b0`; it downloads the official TorchVision weights when they are not already cached. The active compact model is the strongest completed run on the local benchmarks; the small EfficientNet pilot is not a reason to switch it.
+
+```bash
+TORCH_HOME="$PWD/artifacts/torch_cache" python -m affectlens.train --data data/fer-2013-ferplus --output artifacts/fer-efficientnet-b0.onnx --architecture efficientnet_b0 --epochs 30
+python -m affectlens.evaluate --model artifacts/fer-ferplus.onnx --data data/fer-2013/test --filename-prefix PublicTest_ --output reports/publictest.json
+```
+
 The trainer makes stratified fit, checkpoint-selection, and conformal-calibration splits. If `validation/` is present, it is reserved for checkpoint selection and 15% of unique `train/` image groups are reserved for calibration. Otherwise, `train/` is split 70/15/15. It selects a checkpoint by macro-F1 on the selection split, calculates a split-conformal quantile from the untouched calibration split, and evaluates once on `test/`. It exports the ONNX model, an `.uncertainty.json` sidecar, and a `.metrics.json` report. At inference, a singleton set yields a class label; an empty or multi-class set yields an abstention. The target marginal coverage is 90% when calibration and inference examples are exchangeable and use the same preprocessing. The training benchmark uses pre-cropped FER faces, while the app detects and crops faces from uploaded images; therefore its coverage claim does **not** automatically transfer to arbitrary webcam photos. Distribution shift can invalidate the guarantee. Before training, the trainer rejects missing classes, unreadable images, cross-split duplicates, conflicting labels, and repeated validation/test samples. Exact duplicates within training are grouped into the same split. FER-2013 has no reliable identity grouping, so these image-level splits still do not ensure identity-disjoint evaluation.
 
-The calibrated set uses nonconformity score `1 - p(true class)`. Its quantile is selected at finite-sample rank `ceil((n + 1) × (1 - alpha))` on the separate calibration split. This is a standard conformal prediction method, not a claim of a new algorithm. The engineering contribution is an end-to-end pipeline that carries uncertainty through training, ONNX deployment, API responses, and the UI, while surfacing its assumptions.
+The calibrated set uses nonconformity score `1 - p(true class)`. Its quantile is selected at finite-sample rank `ceil((n + 1) × (1 - alpha))` on the separate calibration split. `affectlens.calibrate` can refit temperature and the quantile for another exported model using only its training split. This is a standard conformal prediction method, not a claim of a new algorithm. The engineering contribution is an end-to-end pipeline that carries uncertainty through training, ONNX deployment, API responses, and the UI, while surfacing its assumptions.
 
 Before training on any dataset, run the data audit to inspect class coverage, corrupt images, dimensions, and exact duplicate content across splits:
 

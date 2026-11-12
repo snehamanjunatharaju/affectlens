@@ -29,14 +29,14 @@ def expected_calibration_error(labels, probabilities, bins=15):
     return float(ece), rows
 
 
-def evaluate(model_path: Path, split: Path):
+def evaluate(model_path: Path, split: Path, filename_prefix: str | None = None):
     model = ExpressionModel(model_path, 0.55)
     samples = []
     for folder in sorted(split.iterdir()):
         if not folder.is_dir() or folder.name.casefold() not in ALIASES:
             continue
         label = LABELS.index(ALIASES[folder.name.casefold()])
-        samples.extend((path, label) for path in folder.rglob("*") if path.suffix.lower() in IMAGE_EXTENSIONS)
+        samples.extend((path, label) for path in folder.rglob("*") if path.suffix.lower() in IMAGE_EXTENSIONS and (filename_prefix is None or path.name.startswith(filename_prefix)))
     if not samples:
         raise ValueError(f"No labeled images found in {split}")
     expected, probabilities, sets = [], [], []
@@ -86,8 +86,9 @@ def main():
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--data", type=Path, required=True, help="Folder containing labeled class subfolders")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--filename-prefix", help="Optional prefix filter, e.g. PublicTest_ to avoid mixing public/private data")
     args = parser.parse_args()
-    report = evaluate(args.model, args.data)
+    report = evaluate(args.model, args.data, args.filename_prefix)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2))
     print(json.dumps({key: report[key] for key in ("sample_count", "accuracy", "macro_f1", "ece", "conformal")}, indent=2))

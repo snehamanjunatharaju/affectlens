@@ -84,9 +84,8 @@ def main():
     parser.add_argument("--model", type=Path, required=True, help="ONNX model exported by AffectLens")
     parser.add_argument("--output", type=Path, default=Path("reports/robustness.json"))
     parser.add_argument("--limit", type=int, help="Optional deterministic cap for quick local runs")
+    parser.add_argument("--filename-prefix", help="Optional source filename filter, e.g. PublicTest_")
     args = parser.parse_args()
-    if args.batch_size < 1:
-        parser.error("--batch-size must be positive")
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be positive")
     model = ExpressionModel(args.model, 0.55)
@@ -106,7 +105,7 @@ def main():
             continue
         label_index = LABELS.index(canonical)
         for path in sorted(folder.rglob("*")):
-            if path.suffix.lower() not in IMAGE_EXTENSIONS:
+            if path.suffix.lower() not in IMAGE_EXTENSIONS or (args.filename_prefix and not path.name.startswith(args.filename_prefix)):
                 continue
             image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
             if image is None:
@@ -155,20 +154,30 @@ def main():
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     chart_path = Path("docs/robustness.png")
     chart_path.parent.mkdir(parents=True, exist_ok=True)
-    import matplotlib.pyplot as plt
     names = list(results)
     accuracy = [results[name]["accuracy"] for name in names]
     clean = results.get("clean", {}).get("accuracy", 0.0)
-    figure, axis = plt.subplots(figsize=(11, 5))
-    bars = axis.bar(names, accuracy, color=["#56708a" if name == "clean" else "#a8cf51" for name in names])
-    axis.set_ylabel("Accuracy")
-    axis.set_title(f"Accuracy by controlled image condition (clean={clean:.1%})")
-    axis.set_ylim(0, 1)
-    axis.tick_params(axis="x", rotation=30)
-    axis.bar_label(bars, fmt="%.1f%%", padding=3)
-    figure.tight_layout()
-    figure.savefig(chart_path, dpi=160)
-    plt.close(figure)
+    from PIL import Image, ImageDraw, ImageFont
+    width, height = 1200, 620
+    left, top, right, bottom = 100, 90, 1170, 470
+    chart = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(chart)
+    font = ImageFont.load_default()
+    draw.text((left, 28), f"Accuracy under controlled image conditions · clean={clean:.1%}", fill="#1f2937", font=font)
+    for tick in range(6):
+        value = tick / 5
+        y = bottom - value * (bottom - top)
+        draw.line((left, y, right, y), fill="#e4e8ee", width=1)
+        draw.text((35, y - 5), f"{value:.0%}", fill="#354254", font=font)
+    slot = (right - left) / len(names)
+    for index, (name, score) in enumerate(zip(names, accuracy)):
+        x1 = left + index * slot + slot * 0.18
+        x2 = left + (index + 1) * slot - slot * 0.18
+        y = bottom - score * (bottom - top)
+        draw.rectangle((x1, y, x2, bottom), fill="#56708a" if name == "clean" else "#a8cf51")
+        draw.text((x1, y - 20), f"{score:.1%}", fill="#1f2937", font=font)
+        draw.text((x1, bottom + 10), name[:18], fill="#354254", font=font)
+    chart.save(chart_path)
     print(f"Robustness report written to {args.output}")
 
 
