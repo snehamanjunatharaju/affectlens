@@ -339,9 +339,9 @@ function showPrediction(data, { live = false } = {}) {
     ? `<details class="candidate-list"><summary>Conformal candidates for this frame (${data.prediction_set.length})</summary><p>${data.prediction_set.map(escapeHtml).join(', ')}</p></details>`
     : '';
   const rolling = live
-    ? `<p class="microcopy">Rolling average of ${liveProbabilityWindow.length} recent camera frames. Scores are model outputs, not calibrated probabilities.</p>`
-    : '<p class="microcopy">Scores are model outputs, not calibrated probabilities.</p>';
-  result.innerHTML = `<div class="prediction-title"><strong>Best guess: ${escapeHtml(bestLabel)}</strong><span class="confidence">MODEL SCORE ${(bestScore * 100).toFixed(1)}%</span></div>${uncertainty}${choices}${rolling}${rows}`;
+    ? `<p class="microcopy">Rolling average of ${liveProbabilityWindow.length} recent camera frames. Temperature scaling was fit on a held-out calibration split; calibration can fail under shift.</p>`
+    : '<p class="microcopy">Temperature-calibrated score on the training distribution; it is not a measure of inner feelings.</p>';
+  result.innerHTML = `<div class="prediction-title"><strong>Best guess: ${escapeHtml(bestLabel)}</strong><span class="confidence">CALIBRATED SCORE ${(bestScore * 100).toFixed(1)}%</span></div>${uncertainty}${choices}${rolling}${rows}`;
 }
 
 function showError(message) {

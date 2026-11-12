@@ -14,18 +14,20 @@ from sklearn.model_selection import train_test_split
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
+from torchvision.models import EfficientNet_B0_Weights, efficientnet_b0
 
 from .audit_data import audit_dataset
 from .labels import ALIASES, IMAGE_EXTENSIONS, LABELS
 
 
 class FolderFaces(Dataset):
-    def __init__(self, root: Path, transform):
+    def __init__(self, root: Path, transform, *, rgb=False, use_soft_labels=True):
         self.root = root
         self.transform = transform
+        self.rgb = rgb
         soft_targets = {}
         sidecar = root / "soft_labels.jsonl"
-        if sidecar.is_file():
+        if sidecar.is_file() and use_soft_labels:
             with sidecar.open(encoding="utf-8") as source:
                 for line_number, line in enumerate(source, 1):
                     row = json.loads(line)
@@ -55,7 +57,7 @@ class FolderFaces(Dataset):
     def __getitem__(self, index):
         path, label, target = self.samples[index]
         with Image.open(path) as image:
-            image = image.convert("L")
+            image = image.convert("RGB" if self.rgb else "L")
             return self.transform(image), label, torch.from_numpy(target.copy())
 
 
@@ -78,6 +80,40 @@ class CompactFER(nn.Module):
 
     def forward(self, image):
         return self.classifier(self.features(image))
+
+
+def build_model(architecture: str, *, pretrained: bool):
+    if architecture == "compact":
+        return CompactFER(), 48, False, (0.5,), (0.5,)
+    weights = EfficientNet_B0_Weights.DEFAULT if pretrained else None
+    model = efficientnet_b0(weights=weights)
+    model.classifier[1] = nn.Linear(model.classifier[1].in_features, len(LABELS))
+    if pretrained:
+        for parameter in model.features.parameters():
+            parameter.requires_grad = False
+        for parameter in model.features[-2:].parameters():
+            parameter.requires_grad = True
+    return model, 224, True, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+
+
+def expected_calibration_error(expected, probabilities, bins=15):
+    expected = np.asarray(expected)
+    probabilities = np.asarray(probabilities)
+    confidence = probabilities.max(axis=1)
+    predicted = probabilities.argmax(axis=1)
+    ece = 0.0
+    rows = []
+    for index in range(bins):
+        lower, upper = index / bins, (index + 1) / bins
+        selected = (confidence >= lower) & (confidence < upper if index < bins - 1 else confidence <= upper)
+        if selected.any():
+            accuracy = float((predicted[selected] == expected[selected]).mean())
+            mean_confidence = float(confidence[selected].mean())
+            ece += selected.mean() * abs(accuracy - mean_confidence)
+            rows.append({"lower": lower, "upper": upper, "count": int(selected.sum()), "accuracy": accuracy, "confidence": mean_confidence})
+        else:
+            rows.append({"lower": lower, "upper": upper, "count": 0, "accuracy": None, "confidence": None})
+    return float(ece), rows
 
 
 def metrics(model, loader, device):
@@ -110,6 +146,12 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=6)
     parser.add_argument("--alpha", type=float, default=0.10, help="Target conformal miscoverage rate")
+    parser.add_argument("--architecture", choices=("compact", "efficientnet_b0"), default="compact")
+    parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True, help="Use ImageNet weights for EfficientNet-B0")
+    parser.add_argument("--hard-labels", action="store_true", help="Ignore soft annotation distributions for a hard-label ablation")
+    parser.add_argument("--image-size", type=int, help="Input size override (EfficientNet only; defaults to 224)")
+    parser.add_argument("--max-train-samples", type=int, help="Optional stratified cap for fast local experiments")
+    parser.add_argument("--augmentation", choices=("light", "strong", "none"), default="light")
     args = parser.parse_args()
     if args.epochs < 1 or args.batch_size < 1:
         parser.error("--epochs and --batch-size must be positive")
@@ -122,21 +164,31 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+    image_size = 224 if args.architecture == "efficientnet_b0" else 48
+    rgb = args.architecture == "efficientnet_b0"
+    mean = (0.485, 0.456, 0.406) if rgb else (0.5,)
+    std = (0.229, 0.224, 0.225) if rgb else (0.5,)
+    affine = {
+        "light": transforms.RandomAffine(degrees=10, translate=(0.08, 0.08), scale=(0.9, 1.1)),
+        "strong": transforms.RandomAffine(degrees=20, translate=(0.12, 0.12), scale=(0.8, 1.2), shear=8),
+        "none": transforms.Lambda(lambda image: image),
+    }[args.augmentation]
     augment = transforms.Compose([
-        transforms.Resize((48, 48)),
+        transforms.Resize((image_size, image_size)),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomAffine(degrees=10, translate=(0.08, 0.08), scale=(0.9, 1.1)),
+        affine,
         transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,)),
+        transforms.Normalize(mean, std),
     ])
-    plain = transforms.Compose([transforms.Resize((48, 48)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+    plain = transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor(), transforms.Normalize(mean, std)])
     if not (args.data / "train").is_dir() or not (args.data / "test").is_dir():
         parser.error("--data must contain train/ and test/ split directories")
-    train_aug = FolderFaces(args.data / "train", augment)
-    train_eval = FolderFaces(args.data / "train", plain)
-    test_data = FolderFaces(args.data / "test", plain)
+    use_soft_labels = not args.hard_labels
+    train_aug = FolderFaces(args.data / "train", augment, rgb=rgb, use_soft_labels=use_soft_labels)
+    train_eval = FolderFaces(args.data / "train", plain, rgb=rgb, use_soft_labels=use_soft_labels)
+    test_data = FolderFaces(args.data / "test", plain, rgb=rgb, use_soft_labels=use_soft_labels)
     has_validation = (args.data / "validation").is_dir()
-    selection_data = FolderFaces(args.data / "validation", plain) if has_validation else train_eval
+    selection_data = FolderFaces(args.data / "validation", plain, rgb=rgb, use_soft_labels=use_soft_labels) if has_validation else train_eval
     data_audit = audit_dataset(args.data)
     audit_issues = []
     checked_splits = ["train", "test"] + (["validation"] if has_validation else [])
@@ -206,11 +258,30 @@ def main():
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    model = CompactFER().to(device)
+    model, image_size, rgb, mean, std = build_model(args.architecture, pretrained=args.pretrained and args.architecture != "compact")
+    if args.image_size is not None:
+        if args.architecture == "compact" or args.image_size < 32:
+            parser.error("--image-size override requires EfficientNet and must be at least 32")
+        image_size = args.image_size
+        for dataset in (train_aug, train_eval, test_data, selection_data):
+            dataset.transform.transforms[0] = transforms.Resize((image_size, image_size))
+    if args.max_train_samples is not None:
+        if args.max_train_samples < len(LABELS) * 2:
+            parser.error("--max-train-samples must allow at least two images per class")
+        rng = np.random.default_rng(args.seed)
+        groups_by_label = {label: [digest for digest in fit_groups if labels_lookup[digest] == label] for label in range(len(LABELS))}
+        selected_groups = []
+        target_per_class = max(1, args.max_train_samples // len(LABELS))
+        for label_groups in groups_by_label.values():
+            shuffled_groups = rng.permutation(label_groups)
+            selected_groups.extend(shuffled_groups[:target_per_class].tolist())
+        fit_indices = expand_groups(selected_groups)
+        train_loader = DataLoader(Subset(train_aug, fit_indices), batch_size=args.batch_size, shuffle=True, num_workers=0)
+    model = model.to(device)
     class_mass = np.stack([train_aug.samples[i][2] for i in fit_indices]).sum(axis=0)
     weights = class_mass.sum() / (len(LABELS) * np.maximum(class_mass, 1))
     criterion = nn.CrossEntropyLoss(weight=torch.tensor(weights, dtype=torch.float32, device=device))
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=1e-3 if rgb else 1e-3, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     best_f1, best_state, stale = -1.0, None, 0
 
@@ -241,6 +312,23 @@ def main():
     calibration_metrics = metrics(model, calibration_loader, device)
     calibration_y = np.asarray(calibration_metrics.pop("expected"))
     calibration_probs = calibration_metrics.pop("probabilities")
+    calibration_logits = None
+    calibration_temperature = 1.0
+    # Temperature scaling is fit only on the held-out calibration partition.
+    if len(calibration_y):
+        log_probs = torch.tensor(np.log(np.clip(calibration_probs, 1e-8, 1.0)), dtype=torch.float64)
+        temperature = torch.nn.Parameter(torch.ones((), dtype=torch.float64))
+        scaler = torch.optim.LBFGS([temperature], lr=0.05, max_iter=50, line_search_fn="strong_wolfe")
+        labels_tensor = torch.tensor(calibration_y, dtype=torch.long)
+        def closure():
+            scaler.zero_grad()
+            loss = nn.functional.nll_loss(nn.functional.log_softmax(log_probs / temperature.clamp(0.05, 20.0), dim=1), labels_tensor)
+            loss.backward()
+            return loss
+        scaler.step(closure)
+        calibration_temperature = float(temperature.detach().clamp(0.05, 20.0))
+        calibration_probs = torch.softmax(log_probs / calibration_temperature, dim=1).numpy()
+    calibration_ece, calibration_reliability = expected_calibration_error(calibration_y, calibration_probs)
     nonconformity = np.sort(1.0 - calibration_probs[np.arange(len(calibration_y)), calibration_y])
     alpha = args.alpha
     rank = min(len(nonconformity) - 1, int(np.ceil((len(nonconformity) + 1) * (1 - alpha))) - 1)
@@ -254,10 +342,17 @@ def main():
         "sample_count": int(len(calibration_y)),
         "singleton_coverage": float(calibration_singleton.mean()),
         "singleton_accuracy": float((calibration_sets.argmax(axis=1)[calibration_singleton] == calibration_y[calibration_singleton]).mean()) if calibration_singleton.any() else None,
+        "mean_set_size": float(calibration_sets.sum(axis=1).mean()),
     }
+    calibration_metrics["ece"] = calibration_ece
+    calibration_metrics["reliability_bins"] = calibration_reliability
     test_metrics = metrics(model, test_loader, device)
     test_y = np.asarray(test_metrics.pop("expected"))
     test_probs = test_metrics.pop("probabilities")
+    test_probs = torch.softmax(torch.tensor(np.log(np.clip(test_probs, 1e-8, 1.0)), dtype=torch.float64) / calibration_temperature, dim=1).numpy()
+    test_ece, test_reliability = expected_calibration_error(test_y, test_probs)
+    test_metrics["ece"] = test_ece
+    test_metrics["reliability_bins"] = test_reliability
     test_sets = test_probs >= (1.0 - conformal_quantile)
     test_singleton = test_sets.sum(axis=1) == 1
     test_metrics["conformal"] = {
@@ -265,18 +360,20 @@ def main():
         "marginal_coverage": float(test_sets[np.arange(len(test_y)), test_y].mean()),
         "singleton_coverage": float(test_singleton.mean()),
         "singleton_accuracy": float((test_sets.argmax(axis=1)[test_singleton] == test_y[test_singleton]).mean()) if test_singleton.any() else None,
+        "mean_set_size": float(test_sets.sum(axis=1).mean()),
         "note": "Finite-sample coverage assumes calibration and test examples are exchangeable.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     model.eval()
     export_model = model.to("cpu")
     torch.onnx.export(
-        export_model, torch.zeros(1, 1, 48, 48), str(args.output),
+        export_model, torch.zeros(1, 3 if rgb else 1, image_size, image_size), str(args.output),
         input_names=["face"], output_names=["logits"],
         dynamic_shapes=({0: torch.export.Dim("batch")},),
         dynamo=True,
         opset_version=18,
     )
+    torch.save({"state_dict": export_model.state_dict(), "architecture": args.architecture, "labels": list(LABELS)}, args.output.with_suffix(".pt"))
     calibration_path = args.output.with_suffix(".uncertainty.json")
     calibration_path.write_text(json.dumps({
         "method": "split_conformal_classification",
@@ -284,6 +381,12 @@ def main():
         "quantile": conformal_quantile,
         "labels": list(LABELS),
         "training_labels": "FER+ annotator distributions" if train_aug.uses_soft_labels else "single hard labels",
+        "temperature": calibration_temperature,
+    }, indent=2))
+    args.output.with_suffix(".preprocess.json").write_text(json.dumps({
+        "layout": "nchw", "channels": 3 if rgb else 1, "size": image_size,
+        "mean": list(mean), "std": list(std), "color": "rgb" if rgb else "grayscale",
+        "architecture": args.architecture,
     }, indent=2))
     report_path = args.output.with_suffix(".metrics.json")
     report_path.write_text(json.dumps({
@@ -293,6 +396,11 @@ def main():
         "calibration": calibration_metrics,
         "test": test_metrics,
         "labels": list(LABELS),
+        "architecture": args.architecture,
+        "pretrained": bool(args.pretrained and args.architecture != "compact"),
+        "augmentation": args.augmentation,
+        "train_samples": len(fit_indices),
+        "image_size": image_size,
         "note": "Single benchmark split; no demographic or cross-dataset generalization claim.",
     }, indent=2))
     print(f"ONNX model: {args.output}\nTest accuracy: {test_metrics['accuracy']:.4f}\nTest macro-F1: {test_metrics['macro_f1']:.4f}\nTest conformal coverage: {test_metrics['conformal']['marginal_coverage']:.4f}\nMetrics: {report_path}")

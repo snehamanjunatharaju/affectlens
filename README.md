@@ -2,6 +2,50 @@
 
 **A local-first expression classifier that reports uncertainty and can abstain.**
 
+## Demo
+
+Run the local demo from the instructions below: <http://127.0.0.1:8000>. A public hosted demo is not configured in this workspace.
+
+## Demo GIF
+
+The browser flow supports image upload and opt-in live camera analysis. A recorded demo GIF is not included yet; no user camera footage is used in this repository.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Image or camera frame<br/>user initiated] --> B[MediaPipe detect and align<br/>landmarks stay in browser]
+  B --> C[Preprocess<br/>FER crop]
+  C --> D[ONNX classifier<br/>local CPU inference]
+  D --> E[Temperature scaling<br/>fit on held-out calibration set]
+  E --> F[Conformal prediction set<br/>90% target on matching data]
+  F --> G{One candidate?}
+  G -->|yes| H[Best guess plus scores]
+  G -->|no| I[Show best guess and abstain]
+```
+
+## Results
+
+All rows below use the same **4,078-image held-out FER+ split** and majority-vote class as the scoring target. The compact hard-label and soft-label runs use the full training split. EfficientNet-B0 is only a 1,000-image, four-epoch feasibility pilot; it is not a full-data comparison. Full per-class precision/recall/F1, confusion matrices, and risk-coverage data are in [`reports/model-comparison.json`](reports/model-comparison.json).
+
+| Model | Test accuracy | Macro-F1 | ECE | Conformal coverage | Mean set size | Training note |
+|---|---:|---:|---:|---:|---:|---|
+| Compact, hard labels, light augmentation | 35.85% | 30.97% | 0.026 | 89.70% | 4.44 / 7 | Reference run |
+| Compact, hard labels, no augmentation | 41.59% | 33.27% | 0.033 | 90.66% | 3.85 / 7 | Same split, seed, and epoch budget |
+| Compact, FER+ soft labels | **44.14%** | **36.51%** | 0.034 | 90.73% | 4.22 / 7 | Active checkpoint; 10-rater distributions |
+| ImageNet EfficientNet-B0 | 25.13% | 20.94% | **0.010** | 89.70% | 5.45 / 7 | 1,000 examples, four epochs, 48×48 pilot |
+
+Temperature scaling is fit on a separate, stratified calibration partition; conformal quantiles are also fit there. The reported coverage is measured on the untouched test split. Shifted data do not inherit that coverage guarantee. The model usually cannot narrow its output to one class, so it displays a best guess while abstaining. This is an honest measure of current model weakness. In this run, removing augmentation improved the compact hard-label model; augmentation is not assumed to help without an ablation.
+
+## Limitations
+
+- FER-2013 is low-resolution and noisy. FER+ improves its labels but does not add new photographs.
+- Evaluation is image-level, not identity-disjoint, and uses a single held-out split.
+- Cross-dataset testing is **not run**: RAF-DB/AffectNet access has not been granted in this workspace.
+- Subgroup fairness analysis is **not run**: the available data has no suitable demographic annotations. Do not infer fairness from aggregate scores.
+- The EfficientNet-B0 result is a compute-limited pilot, not evidence that a pretrained backbone is worse when properly trained on a larger licensed dataset.
+- Expression classes describe visible patterns; they do not establish internal feelings, intent, personality, or wellbeing. This demo is unsuitable for decisions about people.
+
 AffectLens brings the FER-2013 seven-class task into one clean project, replacing machine-specific paths and training-on-import scripts with a reproducible trainer, a local API, and a browser interface. Its focus is **selective prediction**: a split-conformal calibration set can return a set of plausible classes or abstain when it cannot make a single-label prediction.
 
 ## What works in this foundation

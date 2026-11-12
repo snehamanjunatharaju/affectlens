@@ -1,32 +1,41 @@
 """Measure classifier quality and selective coverage under controlled image shifts."""
 
 import argparse
-from collections import Counter
 import json
 from pathlib import Path
 
 import cv2
 import numpy as np
-import onnxruntime as ort
-
+from .evaluate import expected_calibration_error
+from .inference import ExpressionModel
 from .labels import ALIASES, IMAGE_EXTENSIONS, LABELS
 
 
 def corruptions(image: np.ndarray) -> dict[str, np.ndarray]:
     height, width = image.shape
     float_image = image.astype(np.float32)
-    dim = np.clip(float_image * 0.8 - 35, 0, 255).astype(np.uint8)
+    dim = np.clip(float_image * 0.5, 0, 255).astype(np.uint8)
+    bright = np.clip(float_image * 1.5 + 25, 0, 255).astype(np.uint8)
     low_contrast = np.clip((float_image - 127.5) * 0.55 + 127.5, 0, 255).astype(np.uint8)
     blur = cv2.GaussianBlur(image, (5, 5), sigmaX=1.2)
+    noise = np.random.default_rng(17).normal(0, 22, image.shape)
+    noisy = np.clip(float_image + noise, 0, 255).astype(np.uint8)
     occluded = image.copy()
-    occluded[: max(1, height // 4), : max(1, width // 4)] = 0
-    return {
+    # A dark band across the eye region acts as a deterministic sunglasses proxy.
+    cv2.rectangle(occluded, (0, height // 3), (width - 1, height // 2), 0, thickness=-1)
+    result = {
         "clean": image,
         "dim_lighting": dim,
+        "high_brightness": bright,
         "low_contrast": low_contrast,
         "gaussian_blur": blur,
-        "corner_occlusion": occluded,
+        "gaussian_noise": noisy,
+        "eye_band_occlusion": occluded,
     }
+    for degrees in (15, 30, 45):
+        matrix = cv2.getRotationMatrix2D((width / 2, height / 2), degrees, 1.0)
+        result[f"rotation_{degrees}deg"] = cv2.warpAffine(image, matrix, (width, height), borderMode=cv2.BORDER_CONSTANT, borderValue=127)
+    return result
 
 
 def softmax(logits: np.ndarray) -> np.ndarray:
@@ -54,10 +63,13 @@ def summarize(labels: np.ndarray, probabilities: np.ndarray, quantile: float) ->
     sets = probabilities >= (1.0 - quantile)
     sizes = sets.sum(axis=1)
     singleton = sizes == 1
+    ece, reliability = expected_calibration_error(labels, probabilities)
     return {
         "samples": int(len(labels)),
         "accuracy": float(np.mean(predictions == labels)),
         "macro_f1": float(np.mean(f1s)),
+        "ece": ece,
+        "reliability_bins": reliability,
         "classes": classes,
         "conformal_marginal_coverage": float(sets[np.arange(len(labels)), labels].mean()),
         "singleton_coverage": float(singleton.mean()),
@@ -71,23 +83,23 @@ def main():
     parser.add_argument("--data", type=Path, required=True, help="Dataset root with test/<class>/ folders")
     parser.add_argument("--model", type=Path, required=True, help="ONNX model exported by AffectLens")
     parser.add_argument("--output", type=Path, default=Path("reports/robustness.json"))
-    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--limit", type=int, help="Optional deterministic cap for quick local runs")
     args = parser.parse_args()
     if args.batch_size < 1:
         parser.error("--batch-size must be positive")
-    sidecar = args.model.with_suffix(".uncertainty.json")
-    if not sidecar.is_file():
-        parser.error(f"Missing conformal calibration sidecar: {sidecar}")
-    calibration = json.loads(sidecar.read_text())
-    if calibration.get("labels") != list(LABELS) or not 0 <= calibration.get("quantile", -1) <= 1:
-        parser.error("Calibration sidecar label order or quantile is invalid")
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be positive")
+    model = ExpressionModel(args.model, 0.55)
+    quantile = model.conformal_quantile
+    if quantile is None:
+        parser.error(f"Missing conformal calibration sidecar for {args.model}")
     test_root = args.data / "test"
     if not test_root.is_dir():
         parser.error(f"Missing test directory: {test_root}")
 
     labels = []
     variants: dict[str, list[np.ndarray]] = {}
-    counts = Counter()
+    counts = {label: 0 for label in LABELS}
     for folder in sorted(test_root.iterdir()):
         canonical = ALIASES.get(folder.name.lower()) if folder.is_dir() else None
         if canonical is None:
@@ -100,44 +112,63 @@ def main():
             if image is None:
                 continue
             image = cv2.resize(image, (48, 48))
+            if args.limit is not None and len(labels) >= args.limit:
+                break
             labels.append(label_index)
             for name, variant in corruptions(image).items():
                 variants.setdefault(name, []).append(variant)
             counts[canonical] += 1
+        if args.limit is not None and len(labels) >= args.limit:
+            break
     missing = [label for label in LABELS if counts[label] == 0]
     if missing:
         parser.error(f"Test split is missing classes: {missing}")
     if not labels:
         parser.error("No readable test images found")
 
-    session = ort.InferenceSession(str(args.model), providers=["CPUExecutionProvider"])
-    input_meta = session.get_inputs()[0]
     results = {}
     labels_array = np.asarray(labels, dtype=np.int64)
     for name, images in variants.items():
-        tensors = (np.asarray(images, dtype=np.float32)[:, None, :, :] / 127.5) - 1.0
-        chunks = []
-        for start in range(0, len(tensors), args.batch_size):
-            scores = session.run(None, {input_meta.name: tensors[start : start + args.batch_size]})[0]
-            chunks.append(softmax(np.asarray(scores).reshape(-1, len(LABELS))))
-        probabilities = np.concatenate(chunks, axis=0)
-        results[name] = summarize(labels_array, probabilities, float(calibration["quantile"]))
+        probabilities = []
+        for image in images:
+            success, encoded = cv2.imencode(".png", image)
+            if not success:
+                raise RuntimeError("Could not encode synthetic robustness image")
+            prediction = model.predict(encoded.tobytes(), face_crop=True)
+            probabilities.append([prediction.probabilities[label] for label in LABELS])
+        results[name] = summarize(labels_array, np.asarray(probabilities), float(quantile))
 
     report = {
         "model": args.model.name,
-        "calibration_method": calibration.get("method"),
-        "calibration_alpha": calibration.get("alpha"),
-        "conformal_quantile": calibration["quantile"],
+        "calibration_method": "temperature scaling + split conformal" if model.conformal_quantile is not None else None,
+        "calibration_alpha": json.loads(args.model.with_suffix(".uncertainty.json").read_text()).get("alpha"),
+        "conformal_quantile": quantile,
         "dataset_split": "test",
         "results": results,
         "limitations": [
             "This evaluates the pre-cropped face classifier, not the face detector or full upload pipeline.",
-            "Synthetic corruptions are controlled probes, not substitutes for real-world domain evaluation.",
+            "Noise, occlusion, and pose changes are synthetic controlled probes, not substitutes for real-world evaluation.",
             "Conformal coverage relies on calibration/test exchangeability; the corrupted sets are intentionally shifted.",
         ],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
+    chart_path = Path("docs/robustness.png")
+    chart_path.parent.mkdir(parents=True, exist_ok=True)
+    import matplotlib.pyplot as plt
+    names = list(results)
+    accuracy = [results[name]["accuracy"] for name in names]
+    clean = results.get("clean", {}).get("accuracy", 0.0)
+    figure, axis = plt.subplots(figsize=(11, 5))
+    bars = axis.bar(names, accuracy, color=["#56708a" if name == "clean" else "#a8cf51" for name in names])
+    axis.set_ylabel("Accuracy")
+    axis.set_title(f"Accuracy by controlled image condition (clean={clean:.1%})")
+    axis.set_ylim(0, 1)
+    axis.tick_params(axis="x", rotation=30)
+    axis.bar_label(bars, fmt="%.1f%%", padding=3)
+    figure.tight_layout()
+    figure.savefig(chart_path, dpi=160)
+    plt.close(figure)
     print(f"Robustness report written to {args.output}")
 
 

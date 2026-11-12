@@ -45,6 +45,11 @@ class ExpressionModel:
         self.session = None
         self.conformal_quantile = None
         self.input_layout = None
+        self.input_channels = 1
+        self.input_size = 48
+        self.mean = [0.5]
+        self.std = [0.5]
+        self.temperature = 1.0
         if model_path:
             if not model_path.is_file():
                 raise RuntimeError(f"Model file does not exist: {model_path}")
@@ -52,12 +57,23 @@ class ExpressionModel:
             input_shape = self.session.get_inputs()[0].shape
             if len(input_shape) != 4:
                 raise RuntimeError("Model input must be rank 4 with a single grayscale channel")
-            if input_shape[1] == 1:
+            if input_shape[1] in (1, 3):
                 self.input_layout = "nchw"
-            elif input_shape[-1] == 1:
+                self.input_channels = input_shape[1]
+            elif input_shape[-1] in (1, 3):
                 self.input_layout = "nhwc"
+                self.input_channels = input_shape[-1]
             else:
-                raise RuntimeError("Model input must use a single grayscale channel in NCHW or NHWC layout")
+                raise RuntimeError("Model input must use one or three channels in NCHW or NHWC layout")
+            sidecar = model_path.with_suffix(".preprocess.json")
+            if sidecar.is_file():
+                import json
+                preprocess = json.loads(sidecar.read_text())
+                self.input_size = int(preprocess.get("size", self.input_size))
+                self.mean = preprocess.get("mean", self.mean)
+                self.std = preprocess.get("std", self.std)
+                if len(self.mean) != self.input_channels or len(self.std) != self.input_channels or any(float(value) <= 0 for value in self.std):
+                    raise RuntimeError(f"Invalid preprocessing parameters in {sidecar}")
             sidecar = model_path.with_suffix(".uncertainty.json")
             if sidecar.is_file():
                 import json
@@ -69,6 +85,9 @@ class ExpressionModel:
                 if not isinstance(quantile, (int, float)) or not 0 <= quantile <= 1:
                     raise RuntimeError(f"Invalid conformal quantile in {sidecar}")
                 self.conformal_quantile = float(quantile)
+                self.temperature = float(calibration.get("temperature", 1.0))
+                if not 0.05 <= self.temperature <= 20.0:
+                    raise RuntimeError(f"Invalid temperature in {sidecar}")
 
     @property
     def ready(self) -> bool:
@@ -94,16 +113,20 @@ class ExpressionModel:
         input_meta = self.session.get_inputs()[0]
         shape = input_meta.shape
         channels_first = self.input_layout == "nchw"
-        height_in, width_in = (48, 48)
+        height_in, width_in = (self.input_size, self.input_size)
         height_axis, width_axis = (2, 3) if channels_first else (1, 2)
         if len(shape) == 4 and isinstance(shape[height_axis], int) and isinstance(shape[width_axis], int):
             height_in, width_in = shape[height_axis], shape[width_axis]
         crop = cv2.resize(crop, (width_in, height_in)).astype(np.float32) / 255.0
-        crop = (crop - 0.5) / 0.5
         if channels_first:
             tensor = crop[None, None, :, :]
         else:
             tensor = crop[None, :, :, None]
+        if self.input_channels == 3:
+            tensor = np.repeat(tensor, 3, axis=1 if channels_first else -1)
+        mean = np.asarray(self.mean, dtype=np.float32).reshape((1, self.input_channels, 1, 1) if channels_first else (1, 1, 1, self.input_channels))
+        std = np.asarray(self.std, dtype=np.float32).reshape((1, self.input_channels, 1, 1) if channels_first else (1, 1, 1, self.input_channels))
+        tensor = (tensor - mean) / std
         logits = np.asarray(self.session.run(None, {input_meta.name: tensor})[0]).reshape(-1)
         if logits.size != len(LABELS) or not np.isfinite(logits).all():
             raise InferenceUnavailable("Model output must contain seven finite class scores.")
@@ -111,7 +134,7 @@ class ExpressionModel:
         if np.all(logits >= 0) and np.isclose(logits.sum(), 1.0, atol=1e-3):
             probabilities = logits / logits.sum()
         else:
-            shifted = logits - logits.max()
+            shifted = logits / self.temperature - (logits / self.temperature).max()
             exp = np.exp(shifted)
             probabilities = exp / exp.sum()
         best = int(probabilities.argmax())
