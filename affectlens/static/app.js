@@ -407,12 +407,22 @@ function seekVideo(video, time) {
     if (video.readyState >= 2 && Math.abs(video.currentTime - target) < 0.005) return resolve();
     const onSeeked = () => { cleanup(); resolve(); };
     const onError = () => { cleanup(); reject(new Error('Could not decode a video frame.')); };
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Timed out while decoding a video frame.'));
+    }, 8000);
     const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('loadeddata', onSeeked);
       video.removeEventListener('error', onError);
     };
-    video.addEventListener('seeked', onSeeked, { once: true });
     video.addEventListener('error', onError, { once: true });
+    if (Math.abs(video.currentTime - target) < 0.005) {
+      video.addEventListener('loadeddata', onSeeked, { once: true });
+      return;
+    }
+    video.addEventListener('seeked', onSeeked, { once: true });
     video.currentTime = target;
   });
 }
