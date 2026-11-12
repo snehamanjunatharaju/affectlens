@@ -69,6 +69,7 @@ class ExpressionModel:
         self.mean = [0.5]
         self.std = [0.5]
         self.color_order = "rgb"
+        self.resize_interpolation = cv2.INTER_LINEAR
         self.temperature = 1.0
         self.fusion_session = None
         self.fusion_metadata = None
@@ -95,10 +96,14 @@ class ExpressionModel:
                 self.mean = preprocess.get("mean", self.mean)
                 self.std = preprocess.get("std", self.std)
                 self.color_order = preprocess.get("color_order", "rgb")
+                interpolation = preprocess.get("interpolation", "linear")
                 if len(self.mean) != self.input_channels or len(self.std) != self.input_channels or any(float(value) <= 0 for value in self.std):
                     raise RuntimeError(f"Invalid preprocessing parameters in {sidecar}")
                 if self.color_order not in {"rgb", "bgr"}:
                     raise RuntimeError(f"Invalid color_order in {sidecar}")
+                if interpolation not in {"linear", "cubic"}:
+                    raise RuntimeError(f"Invalid interpolation in {sidecar}")
+                self.resize_interpolation = cv2.INTER_CUBIC if interpolation == "cubic" else cv2.INTER_LINEAR
             sidecar = model_path.with_suffix(".uncertainty.json")
             if sidecar.is_file():
                 import json
@@ -166,13 +171,13 @@ class ExpressionModel:
             height_in, width_in = shape[height_axis], shape[width_axis]
         if self.input_channels == 3:
             color_crop = cv2.cvtColor(color_crop, cv2.COLOR_RGB2BGR) if self.color_order == "bgr" else color_crop
-            resized = cv2.resize(color_crop, (width_in, height_in)).astype(np.float32) / 255.0
+            resized = cv2.resize(color_crop, (width_in, height_in), interpolation=self.resize_interpolation).astype(np.float32) / 255.0
             if channels_first:
                 tensor = resized.transpose(2, 0, 1)[None, :, :, :]
             else:
                 tensor = resized[None, :, :, :]
         else:
-            resized = cv2.resize(crop, (width_in, height_in)).astype(np.float32) / 255.0
+            resized = cv2.resize(crop, (width_in, height_in), interpolation=self.resize_interpolation).astype(np.float32) / 255.0
             tensor = resized[None, None, :, :] if channels_first else resized[None, :, :, None]
         mean = np.asarray(self.mean, dtype=np.float32).reshape((1, self.input_channels, 1, 1) if channels_first else (1, 1, 1, self.input_channels))
         std = np.asarray(self.std, dtype=np.float32).reshape((1, self.input_channels, 1, 1) if channels_first else (1, 1, 1, self.input_channels))

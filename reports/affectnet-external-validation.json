@@ -136,7 +136,7 @@
     "sad",
     "surprise"
   ],
-  "preprocessing": "MediaPipe eye-aligned crop where detected; otherwise original image. BGR, 260x260, ImageNet mean/std per EmotiEffNet B2 reference implementation.",
+  "preprocessing": "MediaPipe eye-aligned crop where detected; otherwise original image. BGR, 260x260 cubic resize, ImageNet mean/std per EmotiEffNet B2 reference implementation.",
   "calibrated_uncertainty": {
     "temperature": 1.2923790594979319,
     "conformal_quantile": 0.8922345032147199,

@@ -3,7 +3,7 @@
 ## Model
 
 - Active model: EmotiEffNet-B2, VGGFace2-pretrained and fine-tuned on AffectNet, distributed under Apache-2.0.
-- Input: one browser-aligned 260×260 BGR face crop with ImageNet mean/std normalization.
+- Input: one browser-aligned 260×260 BGR face crop, cubic resized and ImageNet mean/std normalized.
 - Output: seven temperature-scaled scores plus a split-conformal candidate set.
 - Calibration: temperature and conformal threshold fitted on FER+ validation data; these are not guaranteed to transfer outside this benchmark distribution.
 - The model weights are a local artifact and are not included in this repository. SHA-256: `7863032d8c0c0bc259aa0dd7b8ebf6b607af454e7a0ea82be2b37767914ecd0f`.

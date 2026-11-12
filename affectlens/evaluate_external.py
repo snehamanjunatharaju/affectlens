@@ -109,7 +109,7 @@ def main():
         "classes": classification_report(expected, predicted, labels=list(range(len(LABELS))), target_names=list(LABELS), output_dict=True, zero_division=0),
         "confusion_matrix": confusion_matrix(expected, predicted, labels=list(range(len(LABELS)))).tolist(),
         "label_order": list(LABELS),
-        "preprocessing": "MediaPipe eye-aligned crop where detected; otherwise original image. BGR, 260x260, ImageNet mean/std per EmotiEffNet B2 reference implementation.",
+        "preprocessing": "MediaPipe eye-aligned crop where detected; otherwise original image. BGR, 260x260 cubic resize, ImageNet mean/std per EmotiEffNet B2 reference implementation.",
     }
     uncertainty_sidecar = args.model.with_suffix(".uncertainty.json")
     if uncertainty_sidecar.is_file():
@@ -179,6 +179,7 @@ def main():
             "mean": [0.485, 0.456, 0.406],
             "std": [0.229, 0.224, 0.225],
             "color_order": "bgr",
+            "interpolation": "cubic",
         }, indent=2) + "\n")
     summary = {key: report[key] for key in ("sample_count", "mesh_aligned_fraction", "accuracy", "macro_f1")}
     if "baseline" in report:

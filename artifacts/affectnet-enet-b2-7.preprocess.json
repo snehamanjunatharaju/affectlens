@@ -10,5 +10,6 @@
     0.224,
     0.225
   ],
-  "color_order": "bgr"
+  "color_order": "bgr",
+  "interpolation": "cubic"
 }

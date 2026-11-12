@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from affectlens import api
-from affectlens.inference import Prediction, decode_upload
+from affectlens.inference import ExpressionModel, Prediction, decode_upload
 from affectlens.monitoring import PredictionMonitor
 from affectlens.rate_limit import SlidingWindowLimiter
 from affectlens.settings import Settings
@@ -41,6 +41,11 @@ def test_decode_applies_orientation_and_discards_exif():
 
     assert decoded.shape == (8, 12, 3)
     assert isinstance(decoded, np.ndarray)
+
+
+def test_active_model_sidecar_matches_benchmark_resize():
+    model = ExpressionModel(Path("artifacts/affectnet-enet-b2-7.onnx"), threshold=0.55)
+    assert model.resize_interpolation == cv2.INTER_CUBIC
 
 
 def test_analyze_request_does_not_write_any_file(monkeypatch):

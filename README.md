@@ -126,7 +126,7 @@ This repository includes a `render.yaml` Blueprint and the active model artifact
 
 ## Configure an ONNX model
 
-Set `AFFECTLENS_MODEL_PATH` to a FER-compatible ONNX model. The active AffectNet model takes a 260×260 three-channel BGR face crop using ImageNet mean/std normalization; its `.preprocess.json` and `.uncertainty.json` sidecars are required for matching preprocessing and calibration. The default for models without sidecars is one grayscale face crop normalized to `[-1, 1]`, with shape `N×1×H×W` (or `N×H×W×1`). Output must be seven finite scores in this order:
+Set `AFFECTLENS_MODEL_PATH` to a FER-compatible ONNX model. The active AffectNet model takes a cubic-resized 260×260 three-channel BGR face crop using ImageNet mean/std normalization; its `.preprocess.json` and `.uncertainty.json` sidecars are required for matching preprocessing and calibration. The default for models without sidecars is one grayscale face crop normalized to `[-1, 1]`, with shape `N×1×H×W` (or `N×H×W×1`). Output must be seven finite scores in this order:
 
 `angry, disgust, fear, happy, neutral, sad, surprise`
 
