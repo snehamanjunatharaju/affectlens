@@ -242,10 +242,6 @@ async function startCamera() {
   }
 }
 
-function isHeifFile(file) {
-  return ['image/heic', 'image/heif'].includes((file.type || '').toLowerCase()) || /\.(heic|heif)$/i.test(file.name || '');
-}
-
 function startLiveAnalysis() {
   if (!cameraStream || !modelReady || liveTimer) return;
   liveFaceTracks = { tracks: new Map(), nextId: 1 };
