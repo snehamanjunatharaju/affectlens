@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pillow_heif
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -41,6 +42,17 @@ def test_decode_applies_orientation_and_discards_exif():
 
     assert decoded.shape == (8, 12, 3)
     assert isinstance(decoded, np.ndarray)
+
+
+def test_decode_accepts_heif_upload():
+    heif = pillow_heif.from_pillow(Image.new("RGB", (12, 8), (40, 120, 200)))
+    output = io.BytesIO()
+    heif.save(output)
+
+    decoded = decode_upload(output.getvalue())
+
+    assert decoded.shape == (8, 12, 3)
+    assert np.allclose(decoded[0, 0], [40, 120, 200], atol=3)
 
 
 def test_active_model_sidecar_matches_benchmark_resize():

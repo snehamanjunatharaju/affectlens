@@ -6,8 +6,11 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 
 from .labels import LABELS
+
+register_heif_opener(thumbnails=False)
 
 
 class InferenceUnavailable(RuntimeError):

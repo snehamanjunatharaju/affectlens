@@ -8,7 +8,7 @@ Live demo: [affectlens-c9kc.onrender.com](https://affectlens-c9kc.onrender.com) 
 
 ## Demo GIF
 
-The browser flow supports image upload and opt-in live camera analysis. A recorded demo GIF is not included yet; no user camera footage is used in this repository.
+The browser flow supports JPEG, PNG, WebP, and HEIC/HEIF image uploads plus opt-in live camera analysis. Browsers that cannot preview HEIC/HEIF send the original image for in-memory server decoding and face detection. A recorded demo GIF is not included yet; no user camera footage is used in this repository.
 
 ## Architecture
 

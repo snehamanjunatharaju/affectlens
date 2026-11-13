@@ -110,8 +110,8 @@ async def analyze(request: Request):
     if settings.save_images:
         raise HTTPException(status_code=503, detail="Image persistence is disabled by this build.")
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-        raise HTTPException(status_code=415, detail="Use a JPEG, PNG, or WebP image.")
+    if content_type not in {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}:
+        raise HTTPException(status_code=415, detail="Use a JPEG, PNG, WebP, HEIC, or HEIF image.")
     client_key = request.client.host if request.client else "unknown"
     allowed, retry_after = request.app.state.rate_limiter.check(client_key)
     if not allowed:

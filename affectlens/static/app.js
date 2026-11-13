@@ -32,6 +32,11 @@ let faceLandmarkerPromise;
 let serviceLabel = 'CHECKING SERVICE';
 let facePipelineLabel = 'LOADING MEDIAPIPE';
 
+function isHeifFile(file) {
+  const mimeType = (file.type || '').toLowerCase();
+  return ['image/heic', 'image/heif'].includes(mimeType) || /\.(heic|heif)$/i.test(file.name || '');
+}
+
 function renderServiceStatus() {
   const status = document.querySelector('#service-status');
   status.textContent = `${facePipelineLabel} · ${serviceLabel}`;
@@ -108,7 +113,7 @@ function setSource(source) {
     previewImage.hidden = !selectedFile;
     placeholder.hidden = Boolean(selectedFile);
     placeholderText.textContent = 'Choose a face image to preview';
-    sourceNote.textContent = 'JPEG, PNG or WebP · max 8 MB · sent to server for analysis · not saved by the app';
+    sourceNote.textContent = 'JPEG, PNG, WebP, HEIC or HEIF · max 8 MB · sent to server for analysis · not saved by the app';
   } else if (cameraMode) {
     stopCamera();
     placeholder.hidden = Boolean(cameraStream);
@@ -141,7 +146,17 @@ analyzeButton.addEventListener('click', async () => {
   analyzeButton.disabled = true;
   analyzeButton.innerHTML = 'Analyzing…';
   try {
-    await previewImage.decode();
+    try {
+      await previewImage.decode();
+    } catch (decodeError) {
+      if (!isHeifFile(selectedFile)) {
+        throw new Error('This image cannot be previewed by your browser. Save it as JPEG or PNG and try again.');
+      }
+      const heifBlob = selectedFile.type ? selectedFile : new Blob([selectedFile], { type: 'image/heic' });
+      sourceNote.textContent = 'Browser cannot preview this HEIC/HEIF file; sending it to the server for face detection.';
+      showPrediction(await requestAnalysis({ blob: heifBlob, faceCrop: false }));
+      return;
+    }
     const prepared = await prepareFaceInputs(previewImage, selectedFile);
     sourceNote.textContent = prepared[0].faceCrop
       ? `MediaPipe aligned ${prepared.length} face(s) in browser · crops sent to server · not saved by app`
@@ -225,6 +240,10 @@ async function startCamera() {
       ? 'Camera permission was not granted.'
       : `Could not start camera: ${error.message}`);
   }
+}
+
+function isHeifFile(file) {
+  return ['image/heic', 'image/heif'].includes((file.type || '').toLowerCase()) || /\.(heic|heif)$/i.test(file.name || '');
 }
 
 function startLiveAnalysis() {

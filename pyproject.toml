@@ -15,6 +15,7 @@ dependencies = [
   "opencv-python-headless>=4.10,<5",
   "onnxruntime>=1.19,<2",
   "Pillow>=10,<13",
+  "pillow-heif>=1.8,<2",
 ]
 
 [project.optional-dependencies]
